@@ -1,5 +1,5 @@
 import type { Plugin } from "@elizaos/core";
-
+import { transferToken } from "./actions/transferToken/transferToken";
 // interface Plugin {
 //     actions?: Action[];
 //     evaluators?: Evaluator[];
@@ -11,7 +11,9 @@ import type { Plugin } from "@elizaos/core";
 export const sonicPlugin: Plugin = {
     name: "sonic",
     description: "Sonic blockchain plugin for ElizaOS",
-    actions: [],
+    actions: [
+        transferToken,
+    ],
     clients: [],
     adapters: [],
     providers: [],
