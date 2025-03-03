@@ -40,7 +40,7 @@ var transferToken = {
   },
   handler: async (runtime, message, state, _options, callback) => {
     elizaLogger.info("Transferring token");
-    elizaLogger.info("by Vijay");
+    elizaLogger.info("by assbc");
     if (!state) {
       state = await runtime.composeState(message);
     } else {

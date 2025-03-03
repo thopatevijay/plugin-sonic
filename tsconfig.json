@@ -10,7 +10,8 @@
         "rootDir": "src",
         "declaration": true,
         "types": ["node", "vitest/globals"],
-        "resolveJsonModule": true
+        "resolveJsonModule": true,
+        "sourceMap": true,
     },
     "include": ["src/**/*.ts"],
     "exclude": ["node_modules", "dist"]

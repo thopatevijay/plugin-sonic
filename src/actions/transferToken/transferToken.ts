@@ -55,7 +55,9 @@ export const transferToken: Action = {
         callback?: HandlerCallback
     ): Promise<boolean> => {
         elizaLogger.info("Transferring token");
-        elizaLogger.info("by Vijay");
+        elizaLogger.info("by assbc");
+
+
 
         if (!state) {
             state = (await runtime.composeState(message)) as State;
