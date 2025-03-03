@@ -1,7 +1,6 @@
 import {
     Content,
     elizaLogger,
-    generateText,
     ModelClass,
     type Action,
     type HandlerCallback,
@@ -9,39 +8,85 @@ import {
     type Memory,
     type State,
 } from "@elizaos/core";
-import { composeContext, generateObject } from "@elizaos/core";
-import { z, type ZodType } from "zod";
-
-export const TransferSchema: ZodType = z.object({
-    recipient: z.string(),
-    amount: z.string().or(z.number()),
-    tokenAddress: z.string().or(z.null()),
-});
+import { composeContext, generateObjectDeprecated } from "@elizaos/core";
+import { ethers } from "ethers";
 
 const transferTemplate = `Respond with a JSON markdown block containing only the extracted values. Use null for any values that cannot be determined.
 
 Example response:
 \`\`\`json
 {
-    "tokenAddress": "BieefG47jAHCGZBxi2q87RDuHyGZyYC3vAzxpyu8pump",
-    "recipient": "9jW8FPr6BSSsemWPV22UUCzSqkVdTp6HTyPqeqyuBbCa",
-    "amount": "1000"
+    "recipient": "0x5C951583CEb79828b1fAB7257FE497A9Dc5896e6",
+    "amount": "1.5",
 }
 \`\`\`
 
 {{recentMessages}}
 
 Extract the following information about the requested token transfer:
-- Token contract address
-- Recipient wallet address
+- Recipient address (Sonic wallet address)
 - Amount to transfer
+- Token contract address (null for native SONIC transfers, Sonic native token is "S")
 
-If no token address is mentioned, respond with null.
-`;
+Respond with a JSON markdown block containing only the extracted values.`;
+
+async function transferSimpleToken(
+    runtime: IAgentRuntime,
+    recipient: string,
+    amount: string
+): Promise<string | undefined> {
+
+    const DEFAULT_SONIC_RPC_URL = "https://rpc.blaze.soniclabs.com";
+    const sonicRPCUrl = runtime.getSetting("SONIC_RPC_URL") as string || DEFAULT_SONIC_RPC_URL;
+    const walletPrivateKey = runtime.getSetting("SONIC_WALLET_PRIVATE_KEY") as string;
+    const provider = new ethers.JsonRpcProvider(sonicRPCUrl);
+    const wallet = new ethers.Wallet(walletPrivateKey, provider);
+
+    const recipientAddress = recipient;
+    const amountToTransfer = ethers.parseEther(amount);
+
+    try {
+        // create txn object
+        const txn = {
+            to: recipientAddress,
+            value: amountToTransfer,
+            gasLimit: 21000,
+        }
+
+        // send the transaction
+        const tx = await wallet.sendTransaction(txn);
+        elizaLogger.info("Transaction sent:", tx);
+
+        // wait for the transaction to be mined
+        const receipt = await tx.wait();
+
+        elizaLogger.info("Transaction successful:", receipt);
+        return receipt?.hash ?? "";
+    } catch (error) {
+        elizaLogger.error("Error transferring token", error);
+        throw error;
+    }
+}
+
+export interface TransferContent extends Content {
+    recipient: string;
+    amount: string | number;
+}
+
+function isTransferContent(
+    _runtime: IAgentRuntime,
+    content: unknown
+): content is TransferContent {
+    return (
+        typeof (content as TransferContent).recipient === "string" &&
+        (typeof (content as TransferContent).amount === "string" ||
+            typeof (content as TransferContent).amount === "number")
+    );
+}
 
 export const transferToken: Action = {
     name: "TRANSFER_TOKEN",
-    description: "Transfer a token to a specific address",
+    description: "Transfer SONIC token to a specific address",
     similes: ["TRANSFER_TOKENS", "SEND_TOKENS", "SEND_TOKEN", "SEND_TOKENS_TO_ADDRESS"],
     validate: async (runtime: IAgentRuntime, message: Memory) => {
         elizaLogger.info("Validating transfer token action");
@@ -55,9 +100,6 @@ export const transferToken: Action = {
         callback?: HandlerCallback
     ): Promise<boolean> => {
         elizaLogger.info("Transferring token");
-        elizaLogger.info("by assbc");
-
-
 
         if (!state) {
             state = (await runtime.composeState(message)) as State;
@@ -70,24 +112,55 @@ export const transferToken: Action = {
             template: transferTemplate,
         });
 
-        const { object: content } = await generateObject({
+        elizaLogger.info("Transfer context:", transferContext);
+
+        const content = await generateObjectDeprecated({
             runtime,
             context: transferContext,
             modelClass: ModelClass.LARGE,
-            schema: TransferSchema,
         });
 
+        elizaLogger.info("Transfer content:", content);
+
+        // Validate transfer content
+        if (!isTransferContent(runtime, content)) {
+            elizaLogger.error("Invalid content for TRANSFER_TOKEN action.");
+            if (callback) {
+                callback({
+                    text: "Unable to process transfer request. Invalid content provided.",
+                    content: { error: "Invalid transfer content" },
+                });
+            }
+            return false;
+        }
+
         try {
-            // mock txn hash
-            const txnHash = "1234567890";
+            const txnHash = await transferSimpleToken(
+                runtime,
+                content.recipient,
+                content.amount.toString(),
+            );
+
+            if (!txnHash) {
+                elizaLogger.error("Error transferring token");
+                if (callback) {
+                    callback({
+                        success: false,
+                        text: `Error transferring token`,
+                        content: { error: "Error transferring token" },
+                    });
+                }
+                return false;
+            }
 
             if (callback) {
                 callback({
-                    text: `Successfully transferred \nTransaction: ${txnHash}`,
+                    text: `Successfully transferred ${content.amount} to ${content.recipient} \nTransaction: ${txnHash}`,
                     content: {
                         success: true,
                         signature: txnHash,
-                        content: content,
+                        amount: content.amount,
+                        recipient: content.recipient,
                     },
                 });
             }
@@ -109,20 +182,21 @@ export const transferToken: Action = {
             {
                 user: "{{user1}}",
                 content: {
-                    text: "Transfer 1000 SOL to 9jW8FPr6BSSsemWPV22UUCzSqkVdTp6HTyPqeqyuBbCa",
-                },
-            },
-            {
-                user: "{{user2}}",
-                content: {
-                    text: "I want to transfer 1000 SOL to 9jW8FPr6BSSsemWPV22UUCzSqkVdTp6HTyPqeqyuBbCa",
+                    text: "Transfer 0.1 S token to 0x5C951583CEb79828b1fAB7257FE497A9Dc5896e6",
                     action: "TRANSFER_TOKEN",
                 },
             },
             {
                 user: "{{user2}}",
                 content: {
-                    text: "Successfully transferred 1000 SOL to 9jW8FPr6BSSsemWPV22UUCzSqkVdTp6HTyPqeqyuBbCa",
+                    text: "I want to transfer 1 SONIC token to 0x5C951583CEb79828b1fAB7257FE497A9Dc5896e6",
+                    action: "TRANSFER_TOKEN",
+                },
+            },
+            {
+                user: "{{user2}}",
+                content: {
+                    text: "Successfully sent 0.1 S token to 0x5C951583CEb79828b1fAB7257FE497A9Dc5896e6",
                 },
             },
         ],
