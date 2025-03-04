@@ -65,6 +65,12 @@ export const transferToken: Action = {
     similes: ["TRANSFER_TOKENS", "SEND_TOKENS", "SEND_TOKEN", "SEND_TOKENS_TO_ADDRESS"],
     validate: async (runtime: IAgentRuntime, message: Memory) => {
         elizaLogger.info("Validating transfer token action");
+        // Check if SONIC_WALLET_PRIVATE_KEY is provided
+        const walletPrivateKey = runtime.getSetting("SONIC_WALLET_PRIVATE_KEY") as string;
+        if (!walletPrivateKey) {
+            elizaLogger.error("Missing SONIC_WALLET_PRIVATE_KEY");
+            return false;
+        }
         return true;
     },
     handler: async (
