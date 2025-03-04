@@ -87,4 +87,52 @@ describe('transferToken', () => {
             content: { error: 'Invalid transfer content' }
         })
     })
+
+    it('should successfully transfer tokens when content is valid', async () => {
+        const { ethers } = await import('ethers')
+        // Mock successful state and content generation
+        vi.mocked(mockRuntime.composeState).mockResolvedValue({} as State)
+        vi.mocked(composeContext).mockReturnValue('mock context')
+        vi.mocked(generateObjectDeprecated).mockResolvedValue({
+            recipient: '0x123456789',
+            amount: '1.0'
+        })
+
+        // Mock ethers functions
+        const mockTx = {
+            wait: vi.fn().mockResolvedValue({ hash: 'mock-tx-hash' })
+        }
+        vi.mocked(ethers.Wallet).mockImplementation(() => ({
+            sendTransaction: vi.fn().mockResolvedValue(mockTx)
+        } as any))
+        vi.mocked(ethers.parseEther).mockReturnValue(BigInt(1000000000000000000)) // 1 ETH in wei
+
+        // Mock runtime settings
+        vi.mocked(mockRuntime.getSetting).mockImplementation((key) => {
+            if (key === 'SONIC_WALLET_PRIVATE_KEY') return 'mock-private-key'
+            if (key === 'SONIC_RPC_URL') return 'mock-rpc-url'
+            return null
+        })
+
+        const callback = vi.fn()
+
+        const result = await transferToken.handler(
+            mockRuntime,
+            {} as Memory,
+            undefined as unknown as State,
+            {},
+            callback
+        )
+
+        expect(result).toBe(true)
+        expect(callback).toHaveBeenCalledWith({
+            text: 'Successfully transferred 1.0 to 0x123456789 \nTransaction: mock-tx-hash',
+            content: {
+                success: true,
+                signature: 'mock-tx-hash',
+                amount: '1.0',
+                recipient: '0x123456789'
+            }
+        })
+    })
 }) 
