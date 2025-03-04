@@ -16,6 +16,9 @@ The Sonic plugin serves as a foundational component of Eliza OS, bridging Sonic 
 
 ## Future Enhancements
 
+### Wallet Provider
+- **Wallet Provider**: Implement wallet provider
+
 ### Trading Operations
 
 - **Token Swaps**: Execute trades between tokens using Jupiter aggregator
@@ -66,6 +69,26 @@ const runtime = await initializeRuntime({
 });
 ```
 
+### Send Token
+
+Transfer SONIC tokens to another address:
+
+```typescript
+// Example conversation
+User: "Send 1 SONIC to 0x5C951583CEb79828b1fAB7257FE497A9Dc5896e6";
+Assistant: "I'll send 1 SONIC token now...";
+```
+
+### Check Wallet Balance
+
+Query wallet balance:
+
+```typescript
+// Example conversation
+User: "What's balance of my wallet 0x5C951583CEb79828b1fAB7257FE497A9Dc5896e6";
+Assistant: "Your wallet contains 4.5 S";
+```
+
 ## Actions
 
 ### transferToken
@@ -79,6 +102,11 @@ const result = await runtime.executeAction("TRANSFER_TOKEN", {
     amount: "1000",
 });
 ```
+
+### getBalance
+
+
+
 ## Safety & Security
 
 ### Best Practices
