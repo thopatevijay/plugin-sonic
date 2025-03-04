@@ -8,14 +8,11 @@ import {
     composeContext,
     ModelClass,
     generateObjectDeprecated,
-    Content,
     ActionExample,
 } from "@elizaos/core";
 import { ethers } from "ethers";
-
-export interface BalanceContent extends Content {
-    address: string;
-}
+import { DEFAULT_SONIC_RPC_URL, GET_BALANCE_TEMPLATE } from "../constant";
+import { BalanceContent } from "../types";
 
 function isBalanceContent(
     _runtime: IAgentRuntime,
@@ -23,27 +20,6 @@ function isBalanceContent(
 ): content is BalanceContent {
     return typeof (content as BalanceContent).address === "string";
 }
-
-const balanceTemplate = `
-Given the recent messages and wallet information below:
-
-Example response:
-\`\`\`json
-{
-    "address": "B62qkGSBuLmqYApYoWTmAzUtwFVx6Fe9ZStJVPzCwLjWZ5NQDYTiqEU",
-    "balance": "100" // balance in SONIC
-}
-\`\`\`
-
-{{recentMessages}}
-
-{{walletInfo}}
-
-Extract the following information about the requested Balance request:
-- Address to check balance for.
-
-Respond with a JSON markdown block containing only the extracted values. Use null for any values that cannot be determined.
-`;
 
 export const getBalance: Action = {
     name: "GET_BALANCE",
@@ -86,7 +62,7 @@ export const getBalance: Action = {
 
         const balanceContext = composeContext({
             state: currentState,
-            template: balanceTemplate,
+            template: GET_BALANCE_TEMPLATE,
         });
 
         const content = await generateObjectDeprecated({
@@ -94,8 +70,6 @@ export const getBalance: Action = {
             context: balanceContext,
             modelClass: ModelClass.LARGE,
         });
-
-        elizaLogger.info("Balance content:", content);
 
         if (!isBalanceContent(runtime, content) || !content.address || content.address === "{{walletAddress}}") {
             elizaLogger.error("No wallet address provided for GET_BALANCE action.");
@@ -105,10 +79,9 @@ export const getBalance: Action = {
                     content: { error: "Missing wallet address" },
                 });
             }
-            return true;
+            return false;
         }
 
-        const DEFAULT_SONIC_RPC_URL = "https://rpc.blaze.soniclabs.com";
         const sonicRPCUrl = runtime.getSetting("SONIC_RPC_URL") as string || DEFAULT_SONIC_RPC_URL;
 
         try {

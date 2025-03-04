@@ -5,8 +5,10 @@ import {
 } from "@elizaos/core";
 import { composeContext, generateObjectDeprecated } from "@elizaos/core";
 import { ethers } from "ethers";
-var transferTemplate = `Respond with a JSON markdown block containing only the extracted values. Use null for any values that cannot be determined.
 
+// src/constant.ts
+var DEFAULT_SONIC_RPC_URL = "https://rpc.blaze.soniclabs.com";
+var TRANSFER_TEMPLATE = `Respond with a JSON markdown block containing only the extracted values. Use null for any values that cannot be determined.
 Example response:
 \`\`\`json
 {
@@ -23,8 +25,29 @@ Extract the following information about the requested token transfer:
 - Token contract address (null for native SONIC transfers, Sonic native token is "S")
 
 Respond with a JSON markdown block containing only the extracted values.`;
+var GET_BALANCE_TEMPLATE = `
+Given the recent messages and wallet information below:
+
+Example response:
+\`\`\`json
+{
+    "address": "B62qkGSBuLmqYApYoWTmAzUtwFVx6Fe9ZStJVPzCwLjWZ5NQDYTiqEU",
+    "balance": "100" // balance in SONIC
+}
+\`\`\`
+
+{{recentMessages}}
+
+{{walletInfo}}
+
+Extract the following information about the requested Balance request:
+- Address to check balance for.
+
+Respond with a JSON markdown block containing only the extracted values. Use null for any values that cannot be determined.
+`;
+
+// src/actions/transferToken/transferToken.ts
 async function transferSimpleToken(runtime, recipient, amount) {
-  const DEFAULT_SONIC_RPC_URL = "https://rpc.blaze.soniclabs.com";
   const sonicRPCUrl = runtime.getSetting("SONIC_RPC_URL") || DEFAULT_SONIC_RPC_URL;
   const walletPrivateKey = runtime.getSetting("SONIC_WALLET_PRIVATE_KEY");
   const provider = new ethers.JsonRpcProvider(sonicRPCUrl);
@@ -67,15 +90,13 @@ var transferToken = {
     }
     const transferContext = composeContext({
       state,
-      template: transferTemplate
+      template: TRANSFER_TEMPLATE
     });
-    elizaLogger.info("Transfer context:", transferContext);
     const content = await generateObjectDeprecated({
       runtime,
       context: transferContext,
       modelClass: ModelClass.LARGE
     });
-    elizaLogger.info("Transfer content:", content);
     if (!isTransferContent(runtime, content)) {
       elizaLogger.error("Invalid content for TRANSFER_TOKEN action.");
       if (callback) {
@@ -164,54 +185,46 @@ import { ethers as ethers2 } from "ethers";
 function isBalanceContent(_runtime, content) {
   return typeof content.address === "string";
 }
-var balanceTemplate = `
-Given the recent messages and wallet information below:
-
-Example response:
-\`\`\`json
-{
-    "address": "B62qkGSBuLmqYApYoWTmAzUtwFVx6Fe9ZStJVPzCwLjWZ5NQDYTiqEU",
-    "balance": "100" // balance in SONIC
-}
-\`\`\`
-
-{{recentMessages}}
-
-{{walletInfo}}
-
-Extract the following information about the requested Balance request:
-- Address to check balance for.
-
-Respond with a JSON markdown block containing only the extracted values. Use null for any values that cannot be determined.
-`;
 var getBalance = {
   name: "GET_BALANCE",
-  description: "Get the balance of a specific address",
-  similes: ["GET_BALANCE", "CHECK_BALANCE", "CHECK_BALANCE_OF", "CHECK_BALANCE_OF_ADDRESS", "LOOKUP_BALANCE", "LOOKUP_BALANCE_OF", "LOOKUP_BALANCE_OF_ADDRESS", "LIST_BALANCE", "LIST_BALANCE_OF", "LIST_BALANCE_OF_ADDRESS"],
+  description: "Get the balance of a specific address on the Sonic blockchain",
+  similes: [
+    "GET_BALANCE",
+    "CHECK_BALANCE",
+    "CHECK_BALANCE_OF",
+    "CHECK_BALANCE_OF_ADDRESS",
+    "LOOKUP_BALANCE",
+    "LOOKUP_BALANCE_OF",
+    "LOOKUP_BALANCE_OF_ADDRESS",
+    "LIST_BALANCE",
+    "LIST_BALANCE_OF",
+    "LIST_BALANCE_OF_ADDRESS",
+    "GET_BALANCE_OF",
+    "GET_BALANCE_OF_ADDRESS",
+    "GET_BALANCE_OF_WALLET",
+    "GET_BALANCE_OF_WALLET_ADDRESS"
+  ],
   validate: async (runtime, message) => {
     elizaLogger2.info("Validating get balance action");
     return true;
   },
   handler: async (runtime, message, state, _options, callback) => {
     elizaLogger2.info("Getting balance");
-    elizaLogger2.info("State:", state);
     let currentState;
     if (!state) {
       currentState = await runtime.composeState(message);
     } else {
       currentState = await runtime.updateRecentMessageState(state);
     }
-    elizaLogger2.info("Current state:", currentState);
     const balanceContext = composeContext2({
       state: currentState,
-      template: balanceTemplate
+      template: GET_BALANCE_TEMPLATE
     });
     const content = await generateObjectDeprecated2({
       runtime,
       context: balanceContext,
       modelClass: ModelClass2.LARGE
     });
-    elizaLogger2.info("Balance content:", content);
     if (!isBalanceContent(runtime, content) || !content.address || content.address === "{{walletAddress}}") {
       elizaLogger2.error("No wallet address provided for GET_BALANCE action.");
       if (callback) {
@@ -220,10 +233,11 @@ var getBalance = {
           content: { error: "Missing wallet address" }
         });
       }
-      return true;
+      return false;
     }
+    const sonicRPCUrl = runtime.getSetting("SONIC_RPC_URL") || DEFAULT_SONIC_RPC_URL;
     try {
-      const provider = new ethers2.JsonRpcProvider("https://rpc.blaze.soniclabs.com");
+      const provider = new ethers2.JsonRpcProvider(sonicRPCUrl);
       const walletAddress = content.address;
       const balance = await provider.getBalance(walletAddress);
       const balanceInSonic = ethers2.formatEther(balance);
