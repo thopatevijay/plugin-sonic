@@ -129,6 +129,8 @@ For issues and feature requests, please:
    - Steps to reproduce
    - Transaction IDs (if applicable)
 
+For direct support, reach out on Discord: @thopate_vijay
+
 For more information about Sonic blockchain capabilities:
 
 - [Sonic Documentation](https://docs.soniclabs.com/)
