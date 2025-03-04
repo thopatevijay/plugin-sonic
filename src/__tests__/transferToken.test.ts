@@ -52,4 +52,12 @@ describe('transferToken', () => {
         const result = await transferToken.validate(mockRuntime, {} as Memory)
         expect(result).toBe(false)
     })
+
+    it('should pass validation when SONIC_WALLET_PRIVATE_KEY is provided', async () => {
+        // Mock getSetting to return a private key
+        vi.mocked(mockRuntime.getSetting).mockReturnValue('mock-private-key')
+
+        const result = await transferToken.validate(mockRuntime, {} as Memory)
+        expect(result).toBe(true)
+    })
 }) 
