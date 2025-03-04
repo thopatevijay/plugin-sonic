@@ -47,29 +47,45 @@ Respond with a JSON markdown block containing only the extracted values. Use nul
 
 export const getBalance: Action = {
     name: "GET_BALANCE",
-    description: "Get the balance of a specific address",
-    similes: ["GET_BALANCE", "CHECK_BALANCE", "CHECK_BALANCE_OF", "CHECK_BALANCE_OF_ADDRESS", "LOOKUP_BALANCE", "LOOKUP_BALANCE_OF", "LOOKUP_BALANCE_OF_ADDRESS", "LIST_BALANCE", "LIST_BALANCE_OF", "LIST_BALANCE_OF_ADDRESS"],
+    description: "Get the balance of a specific address on the Sonic blockchain",
+    similes: [
+        "GET_BALANCE",
+        "CHECK_BALANCE",
+        "CHECK_BALANCE_OF",
+        "CHECK_BALANCE_OF_ADDRESS",
+        "LOOKUP_BALANCE",
+        "LOOKUP_BALANCE_OF",
+        "LOOKUP_BALANCE_OF_ADDRESS",
+        "LIST_BALANCE",
+        "LIST_BALANCE_OF",
+        "LIST_BALANCE_OF_ADDRESS",
+        "GET_BALANCE_OF",
+        "GET_BALANCE_OF_ADDRESS",
+        "GET_BALANCE_OF_WALLET",
+        "GET_BALANCE_OF_WALLET_ADDRESS",
+    ],
     validate: async (runtime: IAgentRuntime, message: Memory) => {
         elizaLogger.info("Validating get balance action");
         return true;
     },
     handler: async (
-        runtime: IAgentRuntime, 
-        message: Memory, 
-        state: State, 
-        _options: { [key: string]: unknown }, 
+        runtime: IAgentRuntime,
+        message: Memory,
+        state: State,
+        _options: { [key: string]: unknown },
         callback?: HandlerCallback
     ): Promise<boolean> => {
         elizaLogger.info("Getting balance");
 
+        let currentState: State;
         if (!state) {
-            state = (await runtime.composeState(message)) as State;
+            currentState = (await runtime.composeState(message)) as State;
         } else {
-            state = await runtime.updateRecentMessageState(state);
+            currentState = await runtime.updateRecentMessageState(state);
         }
 
         const balanceContext = composeContext({
-            state,
+            state: currentState,
             template: balanceTemplate,
         });
 
@@ -81,19 +97,22 @@ export const getBalance: Action = {
 
         elizaLogger.info("Balance content:", content);
 
-        if (!isBalanceContent(runtime, content)) {
-            elizaLogger.error("Invalid content for GET_BALANCE action.");
+        if (!isBalanceContent(runtime, content) || !content.address || content.address === "{{walletAddress}}") {
+            elizaLogger.error("No wallet address provided for GET_BALANCE action.");
             if (callback) {
                 callback({
-                    text: "Unable to process balance request. Invalid content provided.",
-                    content: { error: "Invalid balance content" },
+                    text: "I need a wallet address to check the balance. Please provide a wallet address.",
+                    content: { error: "Missing wallet address" },
                 });
             }
-            return false;
+            return true;
         }
 
+        const DEFAULT_SONIC_RPC_URL = "https://rpc.blaze.soniclabs.com";
+        const sonicRPCUrl = runtime.getSetting("SONIC_RPC_URL") as string || DEFAULT_SONIC_RPC_URL;
+
         try {
-            const provider = new ethers.JsonRpcProvider("https://rpc.blaze.soniclabs.com");
+            const provider = new ethers.JsonRpcProvider(sonicRPCUrl);
             const walletAddress = content.address;
             const balance = await provider.getBalance(walletAddress);
             const balanceInSonic = ethers.formatEther(balance);
@@ -188,7 +207,7 @@ export const getBalance: Action = {
                         address: "{{walletAddress}}",
                     },
                 },
-            },
+            }
         ],
         [
             {
@@ -200,11 +219,54 @@ export const getBalance: Action = {
             {
                 user: "{{agent}}",
                 content: {
-                    text: "I'll help you check your balance",
+                    text: "I need a wallet address to check the balance. Please provide a wallet address.",
+                    content: { error: "Missing wallet address" },
+                },
+            }
+        ],
+        [
+            {
+                user: "{{user1}}",
+                content: {
+                    text: "What is my balance?",
+                },
+            },
+            {
+                user: "{{agent}}",
+                content: {
+                    text: "I need a wallet address to check the balance. Please provide a wallet address.",
+                    content: { error: "Missing wallet address" },
+                },
+            },
+            {
+                user: "{{user1}}",
+                content: {
+                    text: "My wallet address is 0x5C951583CEb79828b1fAB7257FE497A9Dc5896e6",
+                },
+            },
+            {
+                user: "{{agent}}",
+                content: {
+                    text: "I'll help you check the balance for 0x5C951583CEb79828b1fAB7257FE497A9Dc5896e6",
                     action: "GET_BALANCE",
                     content: {
-                        address: "{{walletAddress}}",
+                        address: "0x5C951583CEb79828b1fAB7257FE497A9Dc5896e6",
                     },
+                },
+            }
+        ],
+        [
+            {
+                user: "{{user1}}",
+                content: {
+                    text: "Check balance",
+                },
+            },
+            {
+                user: "{{agent}}",
+                content: {
+                    text: "I need a wallet address to check the balance. Please provide a wallet address.",
+                    content: { error: "Missing wallet address" },
                 },
             }
         ]
