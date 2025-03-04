@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { Memory, IAgentRuntime, ModelClass, State } from '@elizaos/core'
 import { transferToken } from '../actions/transferToken/transferToken'
+import { generateObjectDeprecated, composeContext } from '@elizaos/core'
 
 // Mock the core module functions
 vi.mock('@elizaos/core', async () => {
@@ -59,5 +60,31 @@ describe('transferToken', () => {
 
         const result = await transferToken.validate(mockRuntime, {} as Memory)
         expect(result).toBe(true)
+    })
+
+    it('should fail when transfer content is invalid', async () => {
+        // Mock the necessary functions
+        vi.mocked(mockRuntime.composeState).mockResolvedValue({} as State)
+        vi.mocked(composeContext).mockReturnValue('mock context')
+        vi.mocked(generateObjectDeprecated).mockResolvedValue({
+            // Invalid content missing required fields
+            someOtherField: 'value'
+        })
+
+        const callback = vi.fn()
+
+        const result = await transferToken.handler(
+            mockRuntime,
+            {} as Memory,
+            undefined as unknown as State,
+            {},
+            callback
+        )
+
+        expect(result).toBe(false)
+        expect(callback).toHaveBeenCalledWith({
+            text: 'Unable to process transfer request. Invalid content provided.',
+            content: { error: 'Invalid transfer content' }
+        })
     })
 }) 
