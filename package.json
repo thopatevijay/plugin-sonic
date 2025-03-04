@@ -28,7 +28,6 @@
   },
   "devDependencies": {
     "@types/node": "^20.0.0",
-    "@vitest/coverage-v8": "^3.0.5",
     "nodemon": "^3.1.9",
     "typescript": "5.6.3",
     "vitest": "3.0.5"
@@ -37,9 +36,7 @@
     "build": "tsup --format esm --dts",
     "dev": "tsup --format esm --dts --watch",
     "dev:restart": "nodemon --watch src --exec 'pnpm build' --ext ts,js,json",
-    "test": "vitest --config vitest.config.ts",
-    "test:watch": "vitest",
-    "test:coverage": "vitest run --coverage"
+    "test": "vitest run"
   },
   "peerDependencies": {
     "whatwg-url": "7.1.0"
