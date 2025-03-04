@@ -1,5 +1,4 @@
 import {
-    Content,
     elizaLogger,
     ModelClass,
     type Action,
@@ -10,33 +9,14 @@ import {
 } from "@elizaos/core";
 import { composeContext, generateObjectDeprecated } from "@elizaos/core";
 import { ethers } from "ethers";
-
-const transferTemplate = `Respond with a JSON markdown block containing only the extracted values. Use null for any values that cannot be determined.
-
-Example response:
-\`\`\`json
-{
-    "recipient": "0x5C951583CEb79828b1fAB7257FE497A9Dc5896e6",
-    "amount": "1.5",
-}
-\`\`\`
-
-{{recentMessages}}
-
-Extract the following information about the requested token transfer:
-- Recipient address (Sonic wallet address)
-- Amount to transfer
-- Token contract address (null for native SONIC transfers, Sonic native token is "S")
-
-Respond with a JSON markdown block containing only the extracted values.`;
+import { DEFAULT_SONIC_RPC_URL, TRANSFER_TEMPLATE } from "../../constant";
+import { TransferContent } from "../../types";
 
 async function transferSimpleToken(
     runtime: IAgentRuntime,
     recipient: string,
     amount: string
 ): Promise<string | undefined> {
-
-    const DEFAULT_SONIC_RPC_URL = "https://rpc.blaze.soniclabs.com";
     const sonicRPCUrl = runtime.getSetting("SONIC_RPC_URL") as string || DEFAULT_SONIC_RPC_URL;
     const walletPrivateKey = runtime.getSetting("SONIC_WALLET_PRIVATE_KEY") as string;
     const provider = new ethers.JsonRpcProvider(sonicRPCUrl);
@@ -66,11 +46,6 @@ async function transferSimpleToken(
         elizaLogger.error("Error transferring token", error);
         throw error;
     }
-}
-
-export interface TransferContent extends Content {
-    recipient: string;
-    amount: string | number;
 }
 
 function isTransferContent(
@@ -109,18 +84,14 @@ export const transferToken: Action = {
 
         const transferContext = composeContext({
             state,
-            template: transferTemplate,
+            template: TRANSFER_TEMPLATE,
         });
-
-        elizaLogger.info("Transfer context:", transferContext);
 
         const content = await generateObjectDeprecated({
             runtime,
             context: transferContext,
             modelClass: ModelClass.LARGE,
         });
-
-        elizaLogger.info("Transfer content:", content);
 
         // Validate transfer content
         if (!isTransferContent(runtime, content)) {
