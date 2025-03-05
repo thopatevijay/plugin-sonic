@@ -170,16 +170,10 @@ export const transferToken: Action = {
                 },
             },
             {
-                user: "{{user2}}",
+                user: "assistant",
                 content: {
-                    text: "I want to transfer 1 SONIC token to 0x5C951583CEb79828b1fAB7257FE497A9Dc5896e6",
+                    text: "I'll help you transfer 1 ETH to 0x5C951583CEb79828b1fAB7257FE497A9Dc5896e6",
                     action: "TRANSFER_TOKEN",
-                },
-            },
-            {
-                user: "{{user2}}",
-                content: {
-                    text: "Successfully sent 0.1 S token to 0x5C951583CEb79828b1fAB7257FE497A9Dc5896e6",
                 },
             },
         ],
