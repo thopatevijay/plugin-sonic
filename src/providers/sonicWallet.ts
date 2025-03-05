@@ -90,18 +90,43 @@ export const sonicWalletProvider: Provider = {
     async get(runtime: IAgentRuntime, _message: Memory, _state?: State): Promise<string> {
         try {
             const wallet = initializeSonicWallet(runtime);
-            const address = wallet.getAddress();
-            const balance = await wallet.getBalance();
-            elizaLogger.info("Sonic Wallet", { address, balance });
+            const [address, balance] = await Promise.all([
+                wallet.getAddress(),
+                wallet.getBalance()
+            ]);
+
+            const rpcUrl = runtime.getSetting("SONIC_RPC_URL");
+            const network = rpcUrl === CHAIN_RPC_URLS.MAINNET ? "Mainnet" : "Testnet";
+
+            elizaLogger.info("📱 Sonic Wallet Status :", {
+                address,
+                balance,
+                network
+            });
 
             return [
-                'Sonic Wallet',
-                `Address: ${address}`,
-                `Balance: ${balance} S`,
+                `📱 Sonic Wallet Status:`,
+                `━━━━━━━━━━━━━━━━━━━━━`,
+                `🔑 Address: ${address}`,
+                `💰 Balance: ${balance} S`,
+                `🌐 Network: ${network}`,
+                `━━━━━━━━━━━━━━━━━━━━━`
             ].join('\n');
         } catch (error) {
-            elizaLogger.error("Wallet operation failed:", error);
-            return `Failed to access wallet information: ${error instanceof Error ? error.message : 'Unknown error'}`;
+            const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+            elizaLogger.error("Sonic Wallet Operation Failed:", {
+                error: errorMessage,
+                timestamp: new Date().toISOString()
+            });
+
+            return [
+                `❌ Sonic Wallet Error:`,
+                `━━━━━━━━━━━━━━━━━━━━━`,
+                `Unable to access wallet information.`,
+                `Error: ${errorMessage}`,
+                `Please check your wallet configuration and try again.`,
+                `━━━━━━━━━━━━━━━━━━━━━`
+            ].join('\n');
         }
     },
 };

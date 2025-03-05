@@ -478,17 +478,39 @@ var sonicWalletProvider = {
   async get(runtime, _message, _state) {
     try {
       const wallet = initializeSonicWallet(runtime);
-      const address = wallet.getAddress();
-      const balance = await wallet.getBalance();
-      elizaLogger3.info("Sonic Wallet", { address, balance });
+      const [address, balance] = await Promise.all([
+        wallet.getAddress(),
+        wallet.getBalance()
+      ]);
+      const rpcUrl = runtime.getSetting("SONIC_RPC_URL");
+      const network = rpcUrl === CHAIN_RPC_URLS.MAINNET ? "Mainnet" : "Testnet";
+      elizaLogger3.info("\u{1F4F1} Sonic Wallet Status :", {
+        address,
+        balance,
+        network
+      });
       return [
-        "Sonic Wallet",
-        `Address: ${address}`,
-        `Balance: ${balance} S`
+        `\u{1F4F1} Sonic Wallet Status:`,
+        `\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501`,
+        `\u{1F511} Address: ${address}`,
+        `\u{1F4B0} Balance: ${balance} S`,
+        `\u{1F310} Network: ${network}`,
+        `\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501`
       ].join("\n");
     } catch (error) {
-      elizaLogger3.error("Wallet operation failed:", error);
-      return `Failed to access wallet information: ${error instanceof Error ? error.message : "Unknown error"}`;
+      const errorMessage = error instanceof Error ? error.message : "Unknown error";
+      elizaLogger3.error("Sonic Wallet Operation Failed:", {
+        error: errorMessage,
+        timestamp: (/* @__PURE__ */ new Date()).toISOString()
+      });
+      return [
+        `\u274C Sonic Wallet Error:`,
+        `\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501`,
+        `Unable to access wallet information.`,
+        `Error: ${errorMessage}`,
+        `Please check your wallet configuration and try again.`,
+        `\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501`
+      ].join("\n");
     }
   }
 };
