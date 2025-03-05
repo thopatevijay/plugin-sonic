@@ -8,6 +8,10 @@ import { ethers } from "ethers";
 
 // src/constant.ts
 var DEFAULT_SONIC_RPC_URL = "https://rpc.blaze.soniclabs.com";
+var CHAIN_RPC_URLS = {
+  MAINNET: "https://rpc.soniclabs.com",
+  TESTNET: "https://rpc.blaze.soniclabs.com"
+};
 var TRANSFER_TEMPLATE = `Respond with a JSON markdown block containing only the extracted values. Use null for any values that cannot be determined.
 Example response:
 \`\`\`json
@@ -402,6 +406,93 @@ var getBalance = {
   ]
 };
 
+// src/providers/sonicWallet.ts
+import {
+  createPublicClient,
+  createWalletClient,
+  http,
+  formatEther
+} from "viem";
+import { privateKeyToAccount } from "viem/accounts";
+import * as viemChains from "viem/chains";
+import { elizaLogger as elizaLogger3 } from "@elizaos/core";
+var SonicWalletManager = class {
+  constructor(privateKey, chain) {
+    try {
+      const hexPrivateKey = this.addHexPrefix(privateKey);
+      this.account = privateKeyToAccount(hexPrivateKey);
+      const transport = http(chain.rpcUrls.default.http[0]);
+      this.publicClient = createPublicClient({
+        chain,
+        transport
+      });
+      this.walletClient = createWalletClient({
+        account: this.account,
+        chain,
+        transport
+      });
+    } catch (error) {
+      throw new Error(`Failed to initialize wallet: ${error instanceof Error ? error.message : "Unknown error"}`);
+    }
+  }
+  addHexPrefix(privateKey) {
+    return privateKey.startsWith("0x") ? privateKey : `0x${privateKey}`;
+  }
+  getAddress() {
+    return this.account.address;
+  }
+  async getBalance() {
+    try {
+      const balance = await this.publicClient.getBalance({
+        address: this.account.address
+      });
+      return formatEther(balance);
+    } catch (error) {
+      throw new Error(`Failed to fetch balance: ${error instanceof Error ? error.message : "Unknown error"}`);
+    }
+  }
+  getWalletClient() {
+    return this.walletClient;
+  }
+};
+function resolveChainFromRPCUrl(rpcUrl) {
+  switch (rpcUrl) {
+    case CHAIN_RPC_URLS.MAINNET:
+      return viemChains.sonic;
+    case CHAIN_RPC_URLS.TESTNET:
+      return viemChains.sonicBlazeTestnet;
+    default:
+      throw new Error(`Unsupported RPC URL: ${rpcUrl}, we only support ${Object.values(CHAIN_RPC_URLS).join(", ")}`);
+  }
+}
+function initializeSonicWallet(runtime) {
+  const privateKey = runtime.getSetting("SONIC_WALLET_PRIVATE_KEY");
+  if (!privateKey) {
+    throw new Error("SONIC_WALLET_PRIVATE_KEY is not configured");
+  }
+  const rpcUrl = runtime.getSetting("SONIC_RPC_URL") ?? CHAIN_RPC_URLS.MAINNET;
+  const chain = resolveChainFromRPCUrl(rpcUrl);
+  return new SonicWalletManager(privateKey, chain);
+}
+var sonicWalletProvider = {
+  async get(runtime, _message, _state) {
+    try {
+      const wallet = initializeSonicWallet(runtime);
+      const address = wallet.getAddress();
+      const balance = await wallet.getBalance();
+      elizaLogger3.info("Sonic Wallet", { address, balance });
+      return [
+        "Sonic Wallet",
+        `Address: ${address}`,
+        `Balance: ${balance} S`
+      ].join("\n");
+    } catch (error) {
+      elizaLogger3.error("Wallet operation failed:", error);
+      return `Failed to access wallet information: ${error instanceof Error ? error.message : "Unknown error"}`;
+    }
+  }
+};
+
 // src/index.ts
 var sonicPlugin = {
   name: "sonic",
@@ -412,7 +503,7 @@ var sonicPlugin = {
   ],
   clients: [],
   adapters: [],
-  providers: []
+  providers: [sonicWalletProvider]
 };
 var index_default = sonicPlugin;
 export {

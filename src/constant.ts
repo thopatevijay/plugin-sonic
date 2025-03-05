@@ -1,5 +1,11 @@
 export const DEFAULT_SONIC_RPC_URL = "https://rpc.blaze.soniclabs.com";
 
+export const CHAIN_RPC_URLS = {
+    MAINNET: "https://rpc.soniclabs.com",
+    TESTNET: "https://rpc.blaze.soniclabs.com",
+} as const;
+
+
 export const TRANSFER_TEMPLATE = `Respond with a JSON markdown block containing only the extracted values. Use null for any values that cannot be determined.
 Example response:
 \`\`\`json
