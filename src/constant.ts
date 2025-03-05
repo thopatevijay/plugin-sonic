@@ -23,25 +23,3 @@ Extract the following information about the requested token transfer:
 - Token contract address (null for native SONIC transfers, Sonic native token is "S")
 
 Respond with a JSON markdown block containing only the extracted values.`;
-
-
-export const GET_BALANCE_TEMPLATE = `
-Given the recent messages and wallet information below:
-
-Example response:
-\`\`\`json
-{
-    "address": "B62qkGSBuLmqYApYoWTmAzUtwFVx6Fe9ZStJVPzCwLjWZ5NQDYTiqEU",
-    "balance": "100" // balance in SONIC
-}
-\`\`\`
-
-{{recentMessages}}
-
-{{walletInfo}}
-
-Extract the following information about the requested Balance request:
-- Address to check balance for.
-
-Respond with a JSON markdown block containing only the extracted values. Use null for any values that cannot be determined.
-`;

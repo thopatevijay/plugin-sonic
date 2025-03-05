@@ -61,6 +61,10 @@ class SonicWalletManager {
     public getWalletClient(): WalletClient {
         return this.walletClient;
     }
+
+    public getNetwork(): string {
+        return this.publicClient.chain?.name ?? "Unknown Network";
+    }
 }
 
 function resolveChainFromRPCUrl(rpcUrl: string): Chain {
@@ -74,7 +78,7 @@ function resolveChainFromRPCUrl(rpcUrl: string): Chain {
     }
 }
 
-function initializeSonicWallet(runtime: IAgentRuntime): SonicWalletManager {
+export function initializeSonicWallet(runtime: IAgentRuntime): SonicWalletManager {
     const privateKey = runtime.getSetting("SONIC_WALLET_PRIVATE_KEY");
     if (!privateKey) {
         throw new Error("SONIC_WALLET_PRIVATE_KEY is not configured");

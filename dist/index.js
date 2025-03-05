@@ -29,26 +29,6 @@ Extract the following information about the requested token transfer:
 - Token contract address (null for native SONIC transfers, Sonic native token is "S")
 
 Respond with a JSON markdown block containing only the extracted values.`;
-var GET_BALANCE_TEMPLATE = `
-Given the recent messages and wallet information below:
-
-Example response:
-\`\`\`json
-{
-    "address": "B62qkGSBuLmqYApYoWTmAzUtwFVx6Fe9ZStJVPzCwLjWZ5NQDYTiqEU",
-    "balance": "100" // balance in SONIC
-}
-\`\`\`
-
-{{recentMessages}}
-
-{{walletInfo}}
-
-Extract the following information about the requested Balance request:
-- Address to check balance for.
-
-Respond with a JSON markdown block containing only the extracted values. Use null for any values that cannot be determined.
-`;
 
 // src/actions/transferToken/transferToken.ts
 async function transferSimpleToken(runtime, recipient, amount) {
@@ -185,226 +165,8 @@ Transaction: ${txnHash}`,
 
 // src/actions/getBalance.ts
 import {
-  elizaLogger as elizaLogger2,
-  composeContext as composeContext2,
-  ModelClass as ModelClass2,
-  generateObjectDeprecated as generateObjectDeprecated2
+  elizaLogger as elizaLogger3
 } from "@elizaos/core";
-import { ethers as ethers2 } from "ethers";
-function isBalanceContent(_runtime, content) {
-  return typeof content.address === "string";
-}
-var getBalance = {
-  name: "GET_BALANCE",
-  description: "Get the balance of a specific address on the Sonic blockchain",
-  similes: [
-    "GET_BALANCE",
-    "CHECK_BALANCE",
-    "CHECK_BALANCE_OF",
-    "CHECK_BALANCE_OF_ADDRESS",
-    "LOOKUP_BALANCE",
-    "LOOKUP_BALANCE_OF",
-    "LOOKUP_BALANCE_OF_ADDRESS",
-    "LIST_BALANCE",
-    "LIST_BALANCE_OF",
-    "LIST_BALANCE_OF_ADDRESS",
-    "GET_BALANCE_OF",
-    "GET_BALANCE_OF_ADDRESS",
-    "GET_BALANCE_OF_WALLET",
-    "GET_BALANCE_OF_WALLET_ADDRESS"
-  ],
-  validate: async (runtime, message) => {
-    elizaLogger2.info("Validating get balance action");
-    return true;
-  },
-  handler: async (runtime, message, state, _options, callback) => {
-    elizaLogger2.info("Getting balance");
-    let currentState;
-    if (!state) {
-      currentState = await runtime.composeState(message);
-    } else {
-      currentState = await runtime.updateRecentMessageState(state);
-    }
-    const balanceContext = composeContext2({
-      state: currentState,
-      template: GET_BALANCE_TEMPLATE
-    });
-    const content = await generateObjectDeprecated2({
-      runtime,
-      context: balanceContext,
-      modelClass: ModelClass2.LARGE
-    });
-    if (!isBalanceContent(runtime, content) || !content.address || content.address === "{{walletAddress}}") {
-      elizaLogger2.error("No wallet address provided for GET_BALANCE action.");
-      if (callback) {
-        callback({
-          text: "I need a wallet address to check the balance. Please provide a wallet address.",
-          content: { error: "Missing wallet address" }
-        });
-      }
-      return false;
-    }
-    const sonicRPCUrl = runtime.getSetting("SONIC_RPC_URL") || DEFAULT_SONIC_RPC_URL;
-    try {
-      const provider = new ethers2.JsonRpcProvider(sonicRPCUrl);
-      const walletAddress = content.address;
-      const balance = await provider.getBalance(walletAddress);
-      const balanceInSonic = ethers2.formatEther(balance);
-      if (callback) {
-        callback({
-          text: `Balance: ${balanceInSonic} S`,
-          content: { balance: balanceInSonic }
-        });
-      }
-      return true;
-    } catch (error) {
-      elizaLogger2.error("Error getting balance", error);
-      if (callback) {
-        callback({
-          text: `Error getting balance: ${error}`,
-          content: { error }
-        });
-      }
-      return false;
-    }
-  },
-  examples: [
-    [
-      {
-        user: "{{user1}}",
-        content: {
-          text: "Check my balance of SONIC"
-        }
-      },
-      {
-        user: "{{agent}}",
-        content: {
-          text: "I'll help you check your balance of SONIC",
-          action: "GET_BALANCE",
-          content: {
-            address: "{{walletAddress}}"
-          }
-        }
-      }
-    ],
-    [
-      {
-        user: "{{user1}}",
-        content: {
-          text: "Check my balance of token 0x5C951583CEb79828b1fAB7257FE497A9Dc5896e6"
-        }
-      },
-      {
-        user: "{{agent}}",
-        content: {
-          text: "I'll help you check your balance of token 0x5C951583CEb79828b1fAB7257FE497A9Dc5896e6",
-          action: "GET_BALANCE",
-          content: {
-            address: "{{walletAddress}}",
-            token: "0x5C951583CEb79828b1fAB7257FE497A9Dc5896e6"
-          }
-        }
-      }
-    ],
-    [
-      {
-        user: "{{user1}}",
-        content: {
-          text: "Get SONIC balance of 0x5C951583CEb79828b1fAB7257FE497A9Dc5896e6"
-        }
-      },
-      {
-        user: "{{agent}}",
-        content: {
-          text: "I'll help you check SONIC balance of 0x5C951583CEb79828b1fAB7257FE497A9Dc5896e6",
-          action: "GET_BALANCE",
-          content: {
-            address: "0x5C951583CEb79828b1fAB7257FE497A9Dc5896e6"
-          }
-        }
-      }
-    ],
-    [
-      {
-        user: "{{user1}}",
-        content: {
-          text: "Check my wallet balance on SONIC"
-        }
-      },
-      {
-        user: "{{agent}}",
-        content: {
-          text: "I'll help you check your wallet balance on SONIC",
-          action: "GET_BALANCE",
-          content: {
-            address: "{{walletAddress}}"
-          }
-        }
-      }
-    ],
-    [
-      {
-        user: "{{user1}}",
-        content: {
-          text: "What is my balance?"
-        }
-      },
-      {
-        user: "{{agent}}",
-        content: {
-          text: "I need a wallet address to check the balance. Please provide a wallet address.",
-          content: { error: "Missing wallet address" }
-        }
-      }
-    ],
-    [
-      {
-        user: "{{user1}}",
-        content: {
-          text: "What is my balance?"
-        }
-      },
-      {
-        user: "{{agent}}",
-        content: {
-          text: "I need a wallet address to check the balance. Please provide a wallet address.",
-          content: { error: "Missing wallet address" }
-        }
-      },
-      {
-        user: "{{user1}}",
-        content: {
-          text: "My wallet address is 0x5C951583CEb79828b1fAB7257FE497A9Dc5896e6"
-        }
-      },
-      {
-        user: "{{agent}}",
-        content: {
-          text: "I'll help you check the balance for 0x5C951583CEb79828b1fAB7257FE497A9Dc5896e6",
-          action: "GET_BALANCE",
-          content: {
-            address: "0x5C951583CEb79828b1fAB7257FE497A9Dc5896e6"
-          }
-        }
-      }
-    ],
-    [
-      {
-        user: "{{user1}}",
-        content: {
-          text: "Check balance"
-        }
-      },
-      {
-        user: "{{agent}}",
-        content: {
-          text: "I need a wallet address to check the balance. Please provide a wallet address.",
-          content: { error: "Missing wallet address" }
-        }
-      }
-    ]
-  ]
-};
 
 // src/providers/sonicWallet.ts
 import {
@@ -415,7 +177,7 @@ import {
 } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import * as viemChains from "viem/chains";
-import { elizaLogger as elizaLogger3 } from "@elizaos/core";
+import { elizaLogger as elizaLogger2 } from "@elizaos/core";
 var SonicWalletManager = class {
   constructor(privateKey, chain) {
     try {
@@ -454,6 +216,9 @@ var SonicWalletManager = class {
   getWalletClient() {
     return this.walletClient;
   }
+  getNetwork() {
+    return this.publicClient.chain?.name ?? "Unknown Network";
+  }
 };
 function resolveChainFromRPCUrl(rpcUrl) {
   switch (rpcUrl) {
@@ -484,7 +249,7 @@ var sonicWalletProvider = {
       ]);
       const rpcUrl = runtime.getSetting("SONIC_RPC_URL");
       const network = rpcUrl === CHAIN_RPC_URLS.MAINNET ? "Mainnet" : "Testnet";
-      elizaLogger3.info("\u{1F4F1} Sonic Wallet Status :", {
+      elizaLogger2.info("\u{1F4F1} Sonic Wallet Status :", {
         address,
         balance,
         network
@@ -499,7 +264,7 @@ var sonicWalletProvider = {
       ].join("\n");
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : "Unknown error";
-      elizaLogger3.error("Sonic Wallet Operation Failed:", {
+      elizaLogger2.error("Sonic Wallet Operation Failed:", {
         error: errorMessage,
         timestamp: (/* @__PURE__ */ new Date()).toISOString()
       });
@@ -513,6 +278,148 @@ var sonicWalletProvider = {
       ].join("\n");
     }
   }
+};
+
+// src/actions/getBalance.ts
+var getBalance = {
+  name: "GET_BALANCE",
+  description: "Get the balance of a specific address on the Sonic blockchain",
+  similes: [
+    "GET_BALANCE",
+    "CHECK_BALANCE",
+    "CHECK_BALANCE_OF",
+    "CHECK_BALANCE_OF_ADDRESS",
+    "LOOKUP_BALANCE",
+    "LOOKUP_BALANCE_OF",
+    "LOOKUP_BALANCE_OF_ADDRESS",
+    "LIST_BALANCE",
+    "LIST_BALANCE_OF",
+    "LIST_BALANCE_OF_ADDRESS",
+    "GET_BALANCE_OF",
+    "GET_BALANCE_OF_ADDRESS",
+    "GET_BALANCE_OF_WALLET",
+    "GET_BALANCE_OF_WALLET_ADDRESS"
+  ],
+  validate: async (runtime, message, callback) => {
+    elizaLogger3.info("Validating get balance action");
+    const sonicWallet = initializeSonicWallet(runtime);
+    if (!sonicWallet) {
+      elizaLogger3.error("Failed to initialize Sonic wallet");
+      if (callback) {
+        callback({
+          text: "Failed to initialize Sonic wallet",
+          content: { error: "Failed to initialize Sonic wallet" }
+        });
+      }
+      return false;
+    }
+    return true;
+  },
+  suppressInitialMessage: true,
+  handler: async (runtime, message, state, _options, callback) => {
+    elizaLogger3.info("Getting balance");
+    let currentState;
+    if (!state) {
+      currentState = await runtime.composeState(message);
+    } else {
+      currentState = await runtime.updateRecentMessageState(state);
+    }
+    try {
+      const sonicWallet = initializeSonicWallet(runtime);
+      if (!sonicWallet) {
+        elizaLogger3.error("Failed to initialize Sonic wallet");
+        if (callback) {
+          callback({
+            text: "Failed to initialize Sonic wallet",
+            content: { error: "Failed to initialize Sonic wallet" }
+          });
+        }
+        return false;
+      }
+      const balance = await sonicWallet.getBalance();
+      const constructResponse = `
+            Address: ${sonicWallet.getAddress()}
+            Balance: ${balance} S
+            Network: ${sonicWallet.getNetwork()}
+            `;
+      if (callback) {
+        callback({
+          text: constructResponse
+        });
+      }
+      return true;
+    } catch (error) {
+      elizaLogger3.error("Error getting balance", error);
+      if (callback) {
+        callback({
+          text: `Error getting balance: ${error}`,
+          content: { error }
+        });
+      }
+      return false;
+    }
+  },
+  examples: [
+    [
+      {
+        user: "{{user1}}",
+        content: {
+          text: "Check my balance of SONIC"
+        }
+      },
+      {
+        user: "{{agent}}",
+        content: {
+          text: "I'll help you check your balance of SONIC",
+          action: "GET_BALANCE"
+        }
+      }
+    ],
+    [
+      {
+        user: "{{user1}}",
+        content: {
+          text: "Show my balance"
+        }
+      },
+      {
+        user: "{{agent}}",
+        content: {
+          text: "I'll help you check SONIC balance...",
+          action: "GET_BALANCE"
+        }
+      }
+    ],
+    [
+      {
+        user: "{{user1}}",
+        content: {
+          text: "Check my wallet balance on SONIC"
+        }
+      },
+      {
+        user: "{{agent}}",
+        content: {
+          text: "I'll help you check your wallet balance on SONIC",
+          action: "GET_BALANCE"
+        }
+      }
+    ],
+    [
+      {
+        user: "{{user1}}",
+        content: {
+          text: "What is my balance?"
+        }
+      },
+      {
+        user: "{{agent}}",
+        content: {
+          text: "I'll help you check your balance..."
+        }
+      }
+    ]
+  ]
 };
 
 // src/index.ts
