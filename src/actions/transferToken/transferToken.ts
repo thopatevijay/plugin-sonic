@@ -8,44 +8,101 @@ import {
     type State,
 } from "@elizaos/core";
 import { composeContext, generateObjectDeprecated } from "@elizaos/core";
-import { ethers } from "ethers";
-import { DEFAULT_SONIC_RPC_URL, TRANSFER_TEMPLATE } from "../../constant";
+import { TRANSFER_TEMPLATE } from "../../constant";
 import { TransferContent } from "../../types";
+import { initializeSonicWallet } from "../../providers/sonicWallet";
+import { SonicWalletManager } from "../../providers/sonicWallet";
+import { Hex, ByteArray, formatEther, parseEther, Address, Log } from "viem";
 
-async function transferSimpleToken(
-    runtime: IAgentRuntime,
-    recipient: string,
-    amount: string
-): Promise<string | undefined> {
-    const sonicRPCUrl = runtime.getSetting("SONIC_RPC_URL") as string || DEFAULT_SONIC_RPC_URL;
-    const walletPrivateKey = runtime.getSetting("SONIC_WALLET_PRIVATE_KEY") as string;
-    const provider = new ethers.JsonRpcProvider(sonicRPCUrl);
-    const wallet = new ethers.Wallet(walletPrivateKey, provider);
+interface Transaction {
+    hash: string;
+    from: Address;
+    to: Address;
+    amount: bigint;
+    data?: `0x${string}`;
+    logs?: Log[];
+    explorerTxnUrl: string;
+}
 
-    const recipientAddress = recipient;
-    const amountToTransfer = ethers.parseEther(amount);
+interface TransferParams {
+    toAddress: Address;
+    amount: string;
+    data?: `0x${string}`;
+}
 
-    try {
-        // create txn object
-        const txn = {
-            to: recipientAddress,
-            value: amountToTransfer,
-            gasLimit: 21000,
+class TransferAction {
+    constructor(private wallet: SonicWalletManager) { }
+
+    async transfer(params: TransferParams): Promise<Transaction> {
+
+        if (!params.data) {
+            params.data = "0x";
         }
 
-        // send the transaction
-        const tx = await wallet.sendTransaction(txn);
-        elizaLogger.info("Transaction sent:", tx);
+        const walletClient = this.wallet.getWalletClient();
+        elizaLogger.info("Wallet client", walletClient);
 
-        // wait for the transaction to be mined
-        const receipt = await tx.wait();
+        // if (!walletClient.account) {
+        //     throw new Error("Wallet account not found");
+        // }
 
-        elizaLogger.info("Transaction successful:", receipt);
-        return receipt?.hash ?? "";
-    } catch (error) {
-        elizaLogger.error("Error transferring token", error);
-        throw error;
+        try {
+            const hash = await walletClient.sendTransaction({
+                account: walletClient.account,
+                to: params.toAddress,
+                value: parseEther(params.amount),
+                data: params.data as Hex,
+                kzg: {
+                    blobToKzgCommitment: (_: ByteArray): ByteArray => {
+                        throw new Error("Function not implemented.");
+                    },
+                    computeBlobKzgProof: (
+                        _blob: ByteArray,
+                        _commitment: ByteArray
+                    ): ByteArray => {
+                        throw new Error("Function not implemented.");
+                    },
+                },
+                chain: walletClient.chain,
+            });
+
+            elizaLogger.info("Transaction hash", hash);
+            return {
+                hash,
+                from: walletClient.account?.address as `0x${string}`,
+                to: params.toAddress,
+                amount: parseEther(params.amount),
+                data: params.data as Hex,
+                explorerTxnUrl: `${walletClient.chain?.blockExplorers?.default?.url}/tx/${hash}`,
+            };
+        } catch (error) {
+            elizaLogger.error("Error transferring token", error);
+            throw new Error("Error transferring token");
+        }
     }
+}
+
+const buildTransferDetails = async (
+    state: State,
+    runtime: IAgentRuntime,
+    sonicWallet: SonicWalletManager
+): Promise<TransferParams> => {
+    const transferContext = composeContext({
+        state,
+        template: TRANSFER_TEMPLATE,
+    });
+
+    const transferDetails = await generateObjectDeprecated({
+        runtime,
+        context: transferContext,
+        modelClass: ModelClass.LARGE,
+    }) as TransferParams;
+
+    if (!isTransferContent(runtime, transferDetails)) {
+        throw new Error("Invalid content for TRANSFER_TOKEN action.");
+    }
+
+    return transferDetails;
 }
 
 function isTransferContent(
@@ -53,7 +110,7 @@ function isTransferContent(
     content: unknown
 ): content is TransferContent {
     return (
-        typeof (content as TransferContent).recipient === "string" &&
+        typeof (content as TransferContent).toAddress === "string" &&
         (typeof (content as TransferContent).amount === "string" ||
             typeof (content as TransferContent).amount === "number")
     );
@@ -88,56 +145,36 @@ export const transferToken: Action = {
             state = await runtime.updateRecentMessageState(state);
         }
 
-        const transferContext = composeContext({
+        const sonicWallet = initializeSonicWallet(runtime);
+        const action = new TransferAction(sonicWallet);
+
+        const transferDetails = await buildTransferDetails(
             state,
-            template: TRANSFER_TEMPLATE,
-        });
-
-        const content = await generateObjectDeprecated({
             runtime,
-            context: transferContext,
-            modelClass: ModelClass.LARGE,
-        });
-
-        // Validate transfer content
-        if (!isTransferContent(runtime, content)) {
-            elizaLogger.error("Invalid content for TRANSFER_TOKEN action.");
-            if (callback) {
-                callback({
-                    text: "Unable to process transfer request. Invalid content provided.",
-                    content: { error: "Invalid transfer content" },
-                });
-            }
-            return false;
-        }
+            sonicWallet
+        );
 
         try {
-            const txnHash = await transferSimpleToken(
-                runtime,
-                content.recipient,
-                content.amount.toString(),
-            );
-
-            if (!txnHash) {
-                elizaLogger.error("Error transferring token");
-                if (callback) {
-                    callback({
-                        success: false,
-                        text: `Error transferring token`,
-                        content: { error: "Error transferring token" },
-                    });
-                }
-                return false;
-            }
-
+            const transferResp = await action.transfer(transferDetails);
+            elizaLogger.info("Transfer response", transferResp);
             if (callback) {
                 callback({
-                    text: `Successfully transferred ${content.amount} to ${content.recipient} \nTransaction: ${txnHash}`,
+                    text: `
+                        🎯 Transaction Receipt
+                        ------------------------
+                        Status: ✅ Success
+                        Amount: ${formatEther(transferResp.amount)} S
+                        To: ${transferResp.to}
+                        From: ${transferResp.from}
+                        Transaction Hash: ${transferResp.hash}
+                        ------------------------
+                    `,
                     content: {
                         success: true,
-                        signature: txnHash,
-                        amount: content.amount,
-                        recipient: content.recipient,
+                        signature: transferResp.hash,
+                        amount: formatEther(transferResp.amount),
+                        recipient: transferResp.to,
+                        explorerTxnUrl: transferResp.explorerTxnUrl,
                     },
                 });
             }

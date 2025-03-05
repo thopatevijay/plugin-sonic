@@ -1,172 +1,64 @@
 // src/actions/transferToken/transferToken.ts
 import {
-  elizaLogger,
+  elizaLogger as elizaLogger2,
   ModelClass
 } from "@elizaos/core";
 import { composeContext, generateObjectDeprecated } from "@elizaos/core";
-import { ethers } from "ethers";
 
 // src/constant.ts
-var DEFAULT_SONIC_RPC_URL = "https://rpc.blaze.soniclabs.com";
 var CHAIN_RPC_URLS = {
   MAINNET: "https://rpc.soniclabs.com",
   TESTNET: "https://rpc.blaze.soniclabs.com"
 };
-var TRANSFER_TEMPLATE = `Respond with a JSON markdown block containing only the extracted values. Use null for any values that cannot be determined.
-Example response:
+var TRANSFER_TEMPLATE = `You are an AI assistant specialized in processing cryptocurrency transfer requests. Your task is to extract specific information from user messages and format it into a structured JSON response.
+
+First, review the recent messages from the conversation:
+
+<recent_messages>
+{{recentMessages}}
+</recent_messages>
+
+Your goal is to extract the following information about the requested transfer:
+1. Amount to transfer (in S, without the coin symbol)
+2. Recipient address (must be a valid Ethereum address)
+3. Token symbol or address (if not a native token transfer)
+
+Before providing the final JSON output, show your reasoning process inside <analysis> tags. Follow these steps:
+
+1. Identify the relevant information from the user's message:
+   - Quote the part mentioning the amount.
+   - Quote the part mentioning the recipient address.
+   - Quote the part mentioning the token (if any).
+   
+2. Validate each piece of information:
+   - Amount: Attempt to convert the amount to a number to verify it's valid.
+   - Address: Check that it starts with "0x" and count the number of characters (should be 42).
+   - Token: Note whether it's a native transfer or if a specific token is mentioned.
+
+3. If any information is missing or invalid, prepare an appropriate error message.
+
+4. If all information is valid, summarize your findings.
+
+5. Prepare the JSON structure based on your analysis.
+
+After your analysis, provide the final output in a JSON markdown block. All fields except 'token' are required. The JSON should have this structure:
+
 \`\`\`json
 {
-    "recipient": "0x5C951583CEb79828b1fAB7257FE497A9Dc5896e6",
-    "amount": "1.5",
+    "fromChain": string,
+    "amount": string,
+    "toAddress": string,
+    "token": string | null
 }
 \`\`\`
 
-{{recentMessages}}
+Remember:
+- The amount should be a string representing the number without any currency symbol.
+- The recipient address must be a valid Ethereum address starting with "0x".
+- If no specific token is mentioned (i.e., it's a native token transfer), set the "token" field to null.
 
-Extract the following information about the requested token transfer:
-- Recipient address (Sonic wallet address)
-- Amount to transfer
-- Token contract address (null for native SONIC transfers, Sonic native token is "S")
-
-Respond with a JSON markdown block containing only the extracted values.`;
-
-// src/actions/transferToken/transferToken.ts
-async function transferSimpleToken(runtime, recipient, amount) {
-  const sonicRPCUrl = runtime.getSetting("SONIC_RPC_URL") || DEFAULT_SONIC_RPC_URL;
-  const walletPrivateKey = runtime.getSetting("SONIC_WALLET_PRIVATE_KEY");
-  const provider = new ethers.JsonRpcProvider(sonicRPCUrl);
-  const wallet = new ethers.Wallet(walletPrivateKey, provider);
-  const recipientAddress = recipient;
-  const amountToTransfer = ethers.parseEther(amount);
-  try {
-    const txn = {
-      to: recipientAddress,
-      value: amountToTransfer,
-      gasLimit: 21e3
-    };
-    const tx = await wallet.sendTransaction(txn);
-    elizaLogger.info("Transaction sent:", tx);
-    const receipt = await tx.wait();
-    elizaLogger.info("Transaction successful:", receipt);
-    return receipt?.hash ?? "";
-  } catch (error) {
-    elizaLogger.error("Error transferring token", error);
-    throw error;
-  }
-}
-function isTransferContent(_runtime, content) {
-  return typeof content.recipient === "string" && (typeof content.amount === "string" || typeof content.amount === "number");
-}
-var transferToken = {
-  name: "TRANSFER_TOKEN",
-  description: "Transfer SONIC token to a specific address",
-  similes: ["TRANSFER_TOKENS", "SEND_TOKENS", "SEND_TOKEN", "SEND_TOKENS_TO_ADDRESS"],
-  validate: async (runtime, message) => {
-    elizaLogger.info("Validating transfer token action");
-    const walletPrivateKey = runtime.getSetting("SONIC_WALLET_PRIVATE_KEY");
-    if (!walletPrivateKey) {
-      elizaLogger.error("Missing SONIC_WALLET_PRIVATE_KEY");
-      return false;
-    }
-    return true;
-  },
-  handler: async (runtime, message, state, _options, callback) => {
-    elizaLogger.info("Transferring token");
-    if (!state) {
-      state = await runtime.composeState(message);
-    } else {
-      state = await runtime.updateRecentMessageState(state);
-    }
-    const transferContext = composeContext({
-      state,
-      template: TRANSFER_TEMPLATE
-    });
-    const content = await generateObjectDeprecated({
-      runtime,
-      context: transferContext,
-      modelClass: ModelClass.LARGE
-    });
-    if (!isTransferContent(runtime, content)) {
-      elizaLogger.error("Invalid content for TRANSFER_TOKEN action.");
-      if (callback) {
-        callback({
-          text: "Unable to process transfer request. Invalid content provided.",
-          content: { error: "Invalid transfer content" }
-        });
-      }
-      return false;
-    }
-    try {
-      const txnHash = await transferSimpleToken(
-        runtime,
-        content.recipient,
-        content.amount.toString()
-      );
-      if (!txnHash) {
-        elizaLogger.error("Error transferring token");
-        if (callback) {
-          callback({
-            success: false,
-            text: `Error transferring token`,
-            content: { error: "Error transferring token" }
-          });
-        }
-        return false;
-      }
-      if (callback) {
-        callback({
-          text: `Successfully transferred ${content.amount} to ${content.recipient} 
-Transaction: ${txnHash}`,
-          content: {
-            success: true,
-            signature: txnHash,
-            amount: content.amount,
-            recipient: content.recipient
-          }
-        });
-      }
-      return true;
-    } catch (error) {
-      elizaLogger.error("Error transferring token", error);
-      if (callback) {
-        callback({
-          text: `Error transferring token: ${error}`,
-          content: { error }
-        });
-      }
-      return false;
-    }
-  },
-  examples: [
-    [
-      {
-        user: "{{user1}}",
-        content: {
-          text: "Transfer 0.1 S token to 0x5C951583CEb79828b1fAB7257FE497A9Dc5896e6",
-          action: "TRANSFER_TOKEN"
-        }
-      },
-      {
-        user: "{{user2}}",
-        content: {
-          text: "I want to transfer 1 SONIC token to 0x5C951583CEb79828b1fAB7257FE497A9Dc5896e6",
-          action: "TRANSFER_TOKEN"
-        }
-      },
-      {
-        user: "{{user2}}",
-        content: {
-          text: "Successfully sent 0.1 S token to 0x5C951583CEb79828b1fAB7257FE497A9Dc5896e6"
-        }
-      }
-    ]
-  ]
-};
-
-// src/actions/getBalance.ts
-import {
-  elizaLogger as elizaLogger3
-} from "@elizaos/core";
+Now, process the user's request and provide your response.
+`;
 
 // src/providers/sonicWallet.ts
 import {
@@ -177,7 +69,7 @@ import {
 } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import * as viemChains from "viem/chains";
-import { elizaLogger as elizaLogger2 } from "@elizaos/core";
+import { elizaLogger } from "@elizaos/core";
 var SonicWalletManager = class {
   constructor(privateKey, chain) {
     try {
@@ -249,7 +141,7 @@ var sonicWalletProvider = {
       ]);
       const rpcUrl = runtime.getSetting("SONIC_RPC_URL");
       const network = rpcUrl === CHAIN_RPC_URLS.MAINNET ? "Mainnet" : "Testnet";
-      elizaLogger2.info("\u{1F4F1} Sonic Wallet Status :", {
+      elizaLogger.info("\u{1F4F1} Sonic Wallet Status :", {
         address,
         balance,
         network
@@ -264,7 +156,7 @@ var sonicWalletProvider = {
       ].join("\n");
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : "Unknown error";
-      elizaLogger2.error("Sonic Wallet Operation Failed:", {
+      elizaLogger.error("Sonic Wallet Operation Failed:", {
         error: errorMessage,
         timestamp: (/* @__PURE__ */ new Date()).toISOString()
       });
@@ -280,7 +172,160 @@ var sonicWalletProvider = {
   }
 };
 
+// src/actions/transferToken/transferToken.ts
+import { formatEther as formatEther2, parseEther } from "viem";
+var TransferAction = class {
+  constructor(wallet) {
+    this.wallet = wallet;
+  }
+  async transfer(params) {
+    if (!params.data) {
+      params.data = "0x";
+    }
+    const walletClient = this.wallet.getWalletClient();
+    elizaLogger2.info("Wallet client", walletClient);
+    try {
+      const hash = await walletClient.sendTransaction({
+        account: walletClient.account,
+        to: params.toAddress,
+        value: parseEther(params.amount),
+        data: params.data,
+        kzg: {
+          blobToKzgCommitment: (_) => {
+            throw new Error("Function not implemented.");
+          },
+          computeBlobKzgProof: (_blob, _commitment) => {
+            throw new Error("Function not implemented.");
+          }
+        },
+        chain: walletClient.chain
+      });
+      elizaLogger2.info("Transaction hash", hash);
+      return {
+        hash,
+        from: walletClient.account?.address,
+        to: params.toAddress,
+        amount: parseEther(params.amount),
+        data: params.data,
+        explorerTxnUrl: `${walletClient.chain?.blockExplorers?.default?.url}/tx/${hash}`
+      };
+    } catch (error) {
+      elizaLogger2.error("Error transferring token", error);
+      throw new Error("Error transferring token");
+    }
+  }
+};
+var buildTransferDetails = async (state, runtime, sonicWallet) => {
+  const transferContext = composeContext({
+    state,
+    template: TRANSFER_TEMPLATE
+  });
+  const transferDetails = await generateObjectDeprecated({
+    runtime,
+    context: transferContext,
+    modelClass: ModelClass.LARGE
+  });
+  if (!isTransferContent(runtime, transferDetails)) {
+    throw new Error("Invalid content for TRANSFER_TOKEN action.");
+  }
+  return transferDetails;
+};
+function isTransferContent(_runtime, content) {
+  return typeof content.toAddress === "string" && (typeof content.amount === "string" || typeof content.amount === "number");
+}
+var transferToken = {
+  name: "TRANSFER_TOKEN",
+  description: "Transfer SONIC token to a specific address",
+  similes: ["TRANSFER_TOKENS", "SEND_TOKENS", "SEND_TOKEN", "SEND_TOKENS_TO_ADDRESS"],
+  validate: async (runtime, message) => {
+    elizaLogger2.info("Validating transfer token action");
+    const walletPrivateKey = runtime.getSetting("SONIC_WALLET_PRIVATE_KEY");
+    if (!walletPrivateKey) {
+      elizaLogger2.error("Missing SONIC_WALLET_PRIVATE_KEY");
+      return false;
+    }
+    return true;
+  },
+  handler: async (runtime, message, state, _options, callback) => {
+    elizaLogger2.info("Transferring token");
+    if (!state) {
+      state = await runtime.composeState(message);
+    } else {
+      state = await runtime.updateRecentMessageState(state);
+    }
+    const sonicWallet = initializeSonicWallet(runtime);
+    const action = new TransferAction(sonicWallet);
+    const transferDetails = await buildTransferDetails(
+      state,
+      runtime,
+      sonicWallet
+    );
+    try {
+      const transferResp = await action.transfer(transferDetails);
+      elizaLogger2.info("Transfer response", transferResp);
+      if (callback) {
+        callback({
+          text: `
+                        \u{1F3AF} Transaction Receipt
+                        ------------------------
+                        Status: \u2705 Success
+                        Amount: ${formatEther2(transferResp.amount)} S
+                        To: ${transferResp.to}
+                        From: ${transferResp.from}
+                        Transaction Hash: ${transferResp.hash}
+                        ------------------------
+                    `,
+          content: {
+            success: true,
+            signature: transferResp.hash,
+            amount: formatEther2(transferResp.amount),
+            recipient: transferResp.to,
+            explorerTxnUrl: transferResp.explorerTxnUrl
+          }
+        });
+      }
+      return true;
+    } catch (error) {
+      elizaLogger2.error("Error transferring token", error);
+      if (callback) {
+        callback({
+          text: `Error transferring token: ${error}`,
+          content: { error }
+        });
+      }
+      return false;
+    }
+  },
+  examples: [
+    [
+      {
+        user: "{{user1}}",
+        content: {
+          text: "Transfer 0.1 S token to 0x5C951583CEb79828b1fAB7257FE497A9Dc5896e6",
+          action: "TRANSFER_TOKEN"
+        }
+      },
+      {
+        user: "{{user2}}",
+        content: {
+          text: "I want to transfer 1 SONIC token to 0x5C951583CEb79828b1fAB7257FE497A9Dc5896e6",
+          action: "TRANSFER_TOKEN"
+        }
+      },
+      {
+        user: "{{user2}}",
+        content: {
+          text: "Successfully sent 0.1 S token to 0x5C951583CEb79828b1fAB7257FE497A9Dc5896e6"
+        }
+      }
+    ]
+  ]
+};
+
 // src/actions/getBalance.ts
+import {
+  elizaLogger as elizaLogger3
+} from "@elizaos/core";
 var getBalance = {
   name: "GET_BALANCE",
   description: "Get the balance of a specific address on the Sonic blockchain",

@@ -13,7 +13,7 @@ import type { Provider, IAgentRuntime, Memory, State } from '@elizaos/core';
 import { elizaLogger } from '@elizaos/core';
 import { CHAIN_RPC_URLS } from "../constant";
 
-class SonicWalletManager {
+export class SonicWalletManager {
     private readonly account: ReturnType<typeof privateKeyToAccount>;
     private readonly publicClient: PublicClient;
     private readonly walletClient: WalletClient;
