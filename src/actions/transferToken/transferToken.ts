@@ -9,75 +9,50 @@ import {
 } from "@elizaos/core";
 import { composeContext, generateObjectDeprecated } from "@elizaos/core";
 import { TRANSFER_TEMPLATE } from "../../constant";
-import { TransferContent } from "../../types";
+import { TransferContent, Transaction, TransferParams } from "../../types";
 import { initializeSonicWallet } from "../../providers/sonicWallet";
 import { SonicWalletManager } from "../../providers/sonicWallet";
-import { Hex, ByteArray, formatEther, parseEther, Address, Log } from "viem";
+import { Hex, formatEther, parseEther } from "viem";
 
-interface Transaction {
-    hash: string;
-    from: Address;
-    to: Address;
-    amount: bigint;
-    data?: `0x${string}`;
-    logs?: Log[];
-    explorerTxnUrl: string;
-}
-
-interface TransferParams {
-    toAddress: Address;
-    amount: string;
-    data?: `0x${string}`;
+class TransferError extends Error {
+    constructor(message: string, public readonly cause?: unknown) {
+        super(message);
+        this.name = 'TransferError';
+    }
 }
 
 class TransferAction {
-    constructor(private wallet: SonicWalletManager) { }
+    constructor(private readonly wallet: SonicWalletManager) { }
 
     async transfer(params: TransferParams): Promise<Transaction> {
-
-        if (!params.data) {
-            params.data = "0x";
-        }
-
         const walletClient = this.wallet.getWalletClient();
-        elizaLogger.info("Wallet client", walletClient);
 
-        // if (!walletClient.account) {
-        //     throw new Error("Wallet account not found");
-        // }
+        if (!walletClient.account) {
+            throw new TransferError('Wallet account not found');
+        }
 
         try {
             const hash = await walletClient.sendTransaction({
                 account: walletClient.account,
                 to: params.toAddress,
                 value: parseEther(params.amount),
-                data: params.data as Hex,
-                kzg: {
-                    blobToKzgCommitment: (_: ByteArray): ByteArray => {
-                        throw new Error("Function not implemented.");
-                    },
-                    computeBlobKzgProof: (
-                        _blob: ByteArray,
-                        _commitment: ByteArray
-                    ): ByteArray => {
-                        throw new Error("Function not implemented.");
-                    },
-                },
+                data: params.data as Hex ?? '0x',
                 chain: walletClient.chain,
             });
 
-            elizaLogger.info("Transaction hash", hash);
+            elizaLogger.debug('Transaction submitted', { hash });
+
             return {
                 hash,
-                from: walletClient.account?.address as `0x${string}`,
+                from: walletClient.account.address,
                 to: params.toAddress,
                 amount: parseEther(params.amount),
-                data: params.data as Hex,
+                data: params.data as Hex ?? '0x',
                 explorerTxnUrl: `${walletClient.chain?.blockExplorers?.default?.url}/tx/${hash}`,
             };
         } catch (error) {
-            elizaLogger.error("Error transferring token", error);
-            throw new Error("Error transferring token");
+            elizaLogger.error('Transaction failed', { error, params });
+            throw new TransferError('Failed to transfer tokens', error);
         }
     }
 }
@@ -85,7 +60,6 @@ class TransferAction {
 const buildTransferDetails = async (
     state: State,
     runtime: IAgentRuntime,
-    sonicWallet: SonicWalletManager
 ): Promise<TransferParams> => {
     const transferContext = composeContext({
         state,
@@ -120,59 +94,50 @@ export const transferToken: Action = {
     name: "TRANSFER_TOKEN",
     description: "Transfer SONIC token to a specific address",
     similes: ["TRANSFER_TOKENS", "SEND_TOKENS", "SEND_TOKEN", "SEND_TOKENS_TO_ADDRESS"],
-    validate: async (runtime: IAgentRuntime, message: Memory) => {
-        elizaLogger.info("Validating transfer token action");
-        // Check if SONIC_WALLET_PRIVATE_KEY is provided
-        const walletPrivateKey = runtime.getSetting("SONIC_WALLET_PRIVATE_KEY") as string;
+
+    validate: async (runtime: IAgentRuntime, _message: Memory): Promise<boolean> => {
+        const walletPrivateKey = runtime.getSetting("SONIC_WALLET_PRIVATE_KEY");
         if (!walletPrivateKey) {
-            elizaLogger.error("Missing SONIC_WALLET_PRIVATE_KEY");
+            elizaLogger.error("Validation failed: Missing SONIC_WALLET_PRIVATE_KEY");
             return false;
         }
         return true;
     },
+    suppressInitialMessage: true,
     handler: async (
         runtime: IAgentRuntime,
         message: Memory,
         state: State,
-        _options: { [key: string]: unknown },
+        _options: Record<string, unknown>,
         callback?: HandlerCallback
     ): Promise<boolean> => {
-        elizaLogger.info("Transferring token");
-
-        if (!state) {
-            state = (await runtime.composeState(message)) as State;
-        } else {
-            state = await runtime.updateRecentMessageState(state);
-        }
-
-        const sonicWallet = initializeSonicWallet(runtime);
-        const action = new TransferAction(sonicWallet);
-
-        const transferDetails = await buildTransferDetails(
-            state,
-            runtime,
-            sonicWallet
-        );
-
         try {
+            const currentState = state ?? await runtime.composeState(message);
+            const updatedState = await runtime.updateRecentMessageState(currentState);
+
+            const sonicWallet = initializeSonicWallet(runtime);
+            const action = new TransferAction(sonicWallet);
+            const transferDetails = await buildTransferDetails(updatedState, runtime);
+
             const transferResp = await action.transfer(transferDetails);
-            elizaLogger.info("Transfer response", transferResp);
+
             if (callback) {
+                const formattedAmount = formatEther(transferResp.amount);
                 callback({
-                    text: `
-                        🎯 Transaction Receipt
-                        ------------------------
-                        Status: ✅ Success
-                        Amount: ${formatEther(transferResp.amount)} S
-                        To: ${transferResp.to}
-                        From: ${transferResp.from}
-                        Transaction Hash: ${transferResp.hash}
-                        ------------------------
-                    `,
+                    text: [
+                        '🎯 Transaction Receipt',
+                        '------------------------',
+                        '✅ Status: Success',
+                        `Amount: ${formattedAmount} S`,
+                        `To: ${transferResp.to}`,
+                        `From: ${transferResp.from}`,
+                        `Transaction Hash: ${transferResp.hash}`,
+                        '------------------------'
+                    ].join('\n'),
                     content: {
                         success: true,
                         signature: transferResp.hash,
-                        amount: formatEther(transferResp.amount),
+                        amount: formattedAmount,
                         recipient: transferResp.to,
                         explorerTxnUrl: transferResp.explorerTxnUrl,
                     },
@@ -181,16 +146,20 @@ export const transferToken: Action = {
 
             return true;
         } catch (error) {
-            elizaLogger.error("Error transferring token", error);
+            elizaLogger.error('Handler failed', { error });
+
             if (callback) {
+                const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
                 callback({
-                    text: `Error transferring token: ${error}`,
-                    content: { error: error },
+                    text: `Transaction failed: ${errorMessage}`,
+                    content: { error },
                 });
             }
+
             return false;
         }
     },
+
     examples: [
         [
             {
