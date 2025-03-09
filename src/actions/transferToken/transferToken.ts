@@ -8,75 +8,44 @@ import {
     type State,
 } from "@elizaos/core";
 import { composeContext, generateObjectDeprecated } from "@elizaos/core";
-import { TRANSFER_TEMPLATE } from "../../constant";
-import { TransferContent, Transaction, TransferParams } from "../../types";
-import { initializeSonicWallet } from "../../providers/sonicWallet";
-import { SonicWalletManager } from "../../providers/sonicWallet";
-import { Hex, formatEther, parseEther } from "viem";
+import { ethers } from "ethers";
+import { DEFAULT_SONIC_RPC_URL, TRANSFER_TEMPLATE } from "../../constant";
+import { TransferContent } from "../../types";
 
-class TransferError extends Error {
-    constructor(message: string, public readonly cause?: unknown) {
-        super(message);
-        this.name = 'TransferError';
-    }
-}
-
-class TransferAction {
-    constructor(private readonly wallet: SonicWalletManager) { }
-
-    async transfer(params: TransferParams): Promise<Transaction> {
-        const walletClient = this.wallet.getWalletClient();
-
-        if (!walletClient.account) {
-            throw new TransferError('Wallet account not found');
-        }
-
-        try {
-            const hash = await walletClient.sendTransaction({
-                account: walletClient.account,
-                to: params.toAddress,
-                value: parseEther(params.amount),
-                data: params.data as Hex ?? '0x',
-                chain: walletClient.chain,
-            });
-
-            elizaLogger.debug('Transaction submitted', { hash });
-
-            return {
-                hash,
-                from: walletClient.account.address,
-                to: params.toAddress,
-                amount: parseEther(params.amount),
-                data: params.data as Hex ?? '0x',
-                explorerTxnUrl: `${walletClient.chain?.blockExplorers?.default?.url}/tx/${hash}`,
-            };
-        } catch (error) {
-            elizaLogger.error('Transaction failed', { error, params });
-            throw new TransferError('Failed to transfer tokens', error);
-        }
-    }
-}
-
-const buildTransferDetails = async (
-    state: State,
+async function transferSimpleToken(
     runtime: IAgentRuntime,
-): Promise<TransferParams> => {
-    const transferContext = composeContext({
-        state,
-        template: TRANSFER_TEMPLATE,
-    });
+    recipient: string,
+    amount: string
+): Promise<string | undefined> {
+    const sonicRPCUrl = runtime.getSetting("SONIC_RPC_URL") as string || DEFAULT_SONIC_RPC_URL;
+    const walletPrivateKey = runtime.getSetting("SONIC_WALLET_PRIVATE_KEY") as string;
+    const provider = new ethers.JsonRpcProvider(sonicRPCUrl);
+    const wallet = new ethers.Wallet(walletPrivateKey, provider);
 
-    const transferDetails = await generateObjectDeprecated({
-        runtime,
-        context: transferContext,
-        modelClass: ModelClass.LARGE,
-    }) as TransferParams;
+    const recipientAddress = recipient;
+    const amountToTransfer = ethers.parseEther(amount);
 
-    if (!isTransferContent(runtime, transferDetails)) {
-        throw new Error("Invalid content for TRANSFER_TOKEN action.");
+    try {
+        // create txn object
+        const txn = {
+            to: recipientAddress,
+            value: amountToTransfer,
+            gasLimit: 21000,
+        }
+
+        // send the transaction
+        const tx = await wallet.sendTransaction(txn);
+        elizaLogger.info("Transaction sent:", tx);
+
+        // wait for the transaction to be mined
+        const receipt = await tx.wait();
+
+        elizaLogger.info("Transaction successful:", receipt);
+        return receipt?.hash ?? "";
+    } catch (error) {
+        elizaLogger.error("Error transferring token", error);
+        throw error;
     }
-
-    return transferDetails;
 }
 
 function isTransferContent(
@@ -84,7 +53,7 @@ function isTransferContent(
     content: unknown
 ): content is TransferContent {
     return (
-        typeof (content as TransferContent).toAddress === "string" &&
+        typeof (content as TransferContent).recipient === "string" &&
         (typeof (content as TransferContent).amount === "string" ||
             typeof (content as TransferContent).amount === "number")
     );
@@ -94,72 +63,97 @@ export const transferToken: Action = {
     name: "TRANSFER_TOKEN",
     description: "Transfer SONIC token to a specific address",
     similes: ["TRANSFER_TOKENS", "SEND_TOKENS", "SEND_TOKEN", "SEND_TOKENS_TO_ADDRESS"],
-
-    validate: async (runtime: IAgentRuntime, _message: Memory): Promise<boolean> => {
-        const walletPrivateKey = runtime.getSetting("SONIC_WALLET_PRIVATE_KEY");
+    validate: async (runtime: IAgentRuntime, message: Memory) => {
+        elizaLogger.info("Validating transfer token action");
+        // Check if SONIC_WALLET_PRIVATE_KEY is provided
+        const walletPrivateKey = runtime.getSetting("SONIC_WALLET_PRIVATE_KEY") as string;
         if (!walletPrivateKey) {
-            elizaLogger.error("Validation failed: Missing SONIC_WALLET_PRIVATE_KEY");
+            elizaLogger.error("Missing SONIC_WALLET_PRIVATE_KEY");
             return false;
         }
         return true;
     },
-    suppressInitialMessage: true,
     handler: async (
         runtime: IAgentRuntime,
         message: Memory,
         state: State,
-        _options: Record<string, unknown>,
+        _options: { [key: string]: unknown },
         callback?: HandlerCallback
     ): Promise<boolean> => {
+        elizaLogger.info("Transferring token");
+
+        if (!state) {
+            state = (await runtime.composeState(message)) as State;
+        } else {
+            state = await runtime.updateRecentMessageState(state);
+        }
+
+        const transferContext = composeContext({
+            state,
+            template: TRANSFER_TEMPLATE,
+        });
+
+        const content = await generateObjectDeprecated({
+            runtime,
+            context: transferContext,
+            modelClass: ModelClass.LARGE,
+        });
+
+        // Validate transfer content
+        if (!isTransferContent(runtime, content)) {
+            elizaLogger.error("Invalid content for TRANSFER_TOKEN action.");
+            if (callback) {
+                callback({
+                    text: "Unable to process transfer request. Invalid content provided.",
+                    content: { error: "Invalid transfer content" },
+                });
+            }
+            return false;
+        }
+
         try {
-            const currentState = state ?? await runtime.composeState(message);
-            const updatedState = await runtime.updateRecentMessageState(currentState);
+            const txnHash = await transferSimpleToken(
+                runtime,
+                content.recipient,
+                content.amount.toString(),
+            );
 
-            const sonicWallet = initializeSonicWallet(runtime);
-            const action = new TransferAction(sonicWallet);
-            const transferDetails = await buildTransferDetails(updatedState, runtime);
-
-            const transferResp = await action.transfer(transferDetails);
+            if (!txnHash) {
+                elizaLogger.error("Error transferring token");
+                if (callback) {
+                    callback({
+                        success: false,
+                        text: `Error transferring token`,
+                        content: { error: "Error transferring token" },
+                    });
+                }
+                return false;
+            }
 
             if (callback) {
-                const formattedAmount = formatEther(transferResp.amount);
                 callback({
-                    text: [
-                        '🎯 Transaction Receipt',
-                        '------------------------',
-                        '✅ Status: Success',
-                        `Amount: ${formattedAmount} S`,
-                        `To: ${transferResp.to}`,
-                        `From: ${transferResp.from}`,
-                        `Transaction Hash: ${transferResp.hash}`,
-                        '------------------------'
-                    ].join('\n'),
+                    text: `Successfully transferred ${content.amount} to ${content.recipient} \nTransaction: ${txnHash}`,
                     content: {
                         success: true,
-                        signature: transferResp.hash,
-                        amount: formattedAmount,
-                        recipient: transferResp.to,
-                        explorerTxnUrl: transferResp.explorerTxnUrl,
+                        signature: txnHash,
+                        amount: content.amount,
+                        recipient: content.recipient,
                     },
                 });
             }
 
             return true;
         } catch (error) {
-            elizaLogger.error('Handler failed', { error });
-
+            elizaLogger.error("Error transferring token", error);
             if (callback) {
-                const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
                 callback({
-                    text: `Transaction failed: ${errorMessage}`,
-                    content: { error },
+                    text: `Error transferring token: ${error}`,
+                    content: { error: error },
                 });
             }
-
             return false;
         }
     },
-
     examples: [
         [
             {
@@ -170,10 +164,16 @@ export const transferToken: Action = {
                 },
             },
             {
-                user: "assistant",
+                user: "{{user2}}",
                 content: {
-                    text: "I'll help you transfer 1 ETH to 0x5C951583CEb79828b1fAB7257FE497A9Dc5896e6",
+                    text: "I want to transfer 1 SONIC token to 0x5C951583CEb79828b1fAB7257FE497A9Dc5896e6",
                     action: "TRANSFER_TOKEN",
+                },
+            },
+            {
+                user: "{{user2}}",
+                content: {
+                    text: "Successfully sent 0.1 S token to 0x5C951583CEb79828b1fAB7257FE497A9Dc5896e6",
                 },
             },
         ],
