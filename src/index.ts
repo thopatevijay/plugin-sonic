@@ -1,6 +1,5 @@
 import type { Plugin } from "@elizaos/core";
 import { getBalance, transferToken } from "./actions";
-import { sonicWalletProvider } from "./providers/sonicWallet";
 
 export const sonicPlugin: Plugin = {
     name: "sonic",
@@ -11,7 +10,7 @@ export const sonicPlugin: Plugin = {
     ],
     clients: [],
     adapters: [],
-    providers: [sonicWalletProvider],
+    providers: [],
 };
 
 export default sonicPlugin;

@@ -5,9 +5,21 @@ import {
     HandlerCallback,
     elizaLogger,
     Action,
+    composeContext,
+    ModelClass,
+    generateObjectDeprecated,
     ActionExample,
 } from "@elizaos/core";
-import { initializeSonicWallet } from "../providers/sonicWallet";
+import { ethers } from "ethers";
+import { DEFAULT_SONIC_RPC_URL, GET_BALANCE_TEMPLATE } from "../constant";
+import { BalanceContent } from "../types";
+
+function isBalanceContent(
+    _runtime: IAgentRuntime,
+    content: unknown
+): content is BalanceContent {
+    return typeof (content as BalanceContent).address === "string";
+}
 
 export const getBalance: Action = {
     name: "GET_BALANCE",
@@ -28,22 +40,10 @@ export const getBalance: Action = {
         "GET_BALANCE_OF_WALLET",
         "GET_BALANCE_OF_WALLET_ADDRESS",
     ],
-    validate: async (runtime: IAgentRuntime, message: Memory, callback?: HandlerCallback) => {
+    validate: async (runtime: IAgentRuntime, message: Memory) => {
         elizaLogger.info("Validating get balance action");
-        const sonicWallet = initializeSonicWallet(runtime);
-        if (!sonicWallet) {
-            elizaLogger.error("Failed to initialize Sonic wallet");
-            if (callback) {
-                callback({
-                    text: "Failed to initialize Sonic wallet",
-                    content: { error: "Failed to initialize Sonic wallet" },
-                });
-            }
-            return false;
-        }
         return true;
     },
-    suppressInitialMessage: true,
     handler: async (
         runtime: IAgentRuntime,
         message: Memory,
@@ -60,33 +60,42 @@ export const getBalance: Action = {
             currentState = await runtime.updateRecentMessageState(state);
         }
 
-        try {
-            const sonicWallet = initializeSonicWallet(runtime);
-            if (!sonicWallet) {
-                elizaLogger.error("Failed to initialize Sonic wallet");
-                if (callback) {
-                    callback({
-                        text: "Failed to initialize Sonic wallet",
-                        content: { error: "Failed to initialize Sonic wallet" },
-                    });
-                }
-                return false;
+        const balanceContext = composeContext({
+            state: currentState,
+            template: GET_BALANCE_TEMPLATE,
+        });
+
+        const content = await generateObjectDeprecated({
+            runtime,
+            context: balanceContext,
+            modelClass: ModelClass.LARGE,
+        });
+
+        if (!isBalanceContent(runtime, content) || !content.address || content.address === "{{walletAddress}}") {
+            elizaLogger.error("No wallet address provided for GET_BALANCE action.");
+            if (callback) {
+                callback({
+                    text: "I need a wallet address to check the balance. Please provide a wallet address.",
+                    content: { error: "Missing wallet address" },
+                });
             }
+            return false;
+        }
 
-            const balance = await sonicWallet.getBalance();
+        const sonicRPCUrl = runtime.getSetting("SONIC_RPC_URL") as string || DEFAULT_SONIC_RPC_URL;
 
-            const constructResponse = `
-            Address: ${sonicWallet.getAddress()}
-            Balance: ${balance} S
-            Network: ${sonicWallet.getNetwork()}
-            `;
+        try {
+            const provider = new ethers.JsonRpcProvider(sonicRPCUrl);
+            const walletAddress = content.address;
+            const balance = await provider.getBalance(walletAddress);
+            const balanceInSonic = ethers.formatEther(balance);
 
             if (callback) {
                 callback({
-                    text: constructResponse,
+                    text: `Balance: ${balanceInSonic} S`,
+                    content: { balance: balanceInSonic },
                 });
             }
-
             return true;
         } catch (error) {
             elizaLogger.error("Error getting balance", error);
@@ -112,6 +121,9 @@ export const getBalance: Action = {
                 content: {
                     text: "I'll help you check your balance of SONIC",
                     action: "GET_BALANCE",
+                    content: {
+                        address: "{{walletAddress}}",
+                    },
                 },
             },
         ],
@@ -119,14 +131,36 @@ export const getBalance: Action = {
             {
                 user: "{{user1}}",
                 content: {
-                    text: "Show my balance",
+                    text: "Check my balance of token 0x5C951583CEb79828b1fAB7257FE497A9Dc5896e6",
                 },
             },
             {
                 user: "{{agent}}",
                 content: {
-                    text: "I'll help you check SONIC balance...",
+                    text: "I'll help you check your balance of token 0x5C951583CEb79828b1fAB7257FE497A9Dc5896e6",
                     action: "GET_BALANCE",
+                    content: {
+                        address: "{{walletAddress}}",
+                        token: "0x5C951583CEb79828b1fAB7257FE497A9Dc5896e6",
+                    },
+                },
+            },
+        ],
+        [
+            {
+                user: "{{user1}}",
+                content: {
+                    text: "Get SONIC balance of 0x5C951583CEb79828b1fAB7257FE497A9Dc5896e6",
+                },
+            },
+            {
+                user: "{{agent}}",
+                content: {
+                    text: "I'll help you check SONIC balance of 0x5C951583CEb79828b1fAB7257FE497A9Dc5896e6",
+                    action: "GET_BALANCE",
+                    content: {
+                        address: "0x5C951583CEb79828b1fAB7257FE497A9Dc5896e6",
+                    },
                 },
             },
         ],
@@ -142,6 +176,9 @@ export const getBalance: Action = {
                 content: {
                     text: "I'll help you check your wallet balance on SONIC",
                     action: "GET_BALANCE",
+                    content: {
+                        address: "{{walletAddress}}",
+                    },
                 },
             }
         ],
@@ -155,9 +192,56 @@ export const getBalance: Action = {
             {
                 user: "{{agent}}",
                 content: {
-                    text: "I'll help you check your balance...",
+                    text: "I need a wallet address to check the balance. Please provide a wallet address.",
+                    content: { error: "Missing wallet address" },
                 },
             }
         ],
+        [
+            {
+                user: "{{user1}}",
+                content: {
+                    text: "What is my balance?",
+                },
+            },
+            {
+                user: "{{agent}}",
+                content: {
+                    text: "I need a wallet address to check the balance. Please provide a wallet address.",
+                    content: { error: "Missing wallet address" },
+                },
+            },
+            {
+                user: "{{user1}}",
+                content: {
+                    text: "My wallet address is 0x5C951583CEb79828b1fAB7257FE497A9Dc5896e6",
+                },
+            },
+            {
+                user: "{{agent}}",
+                content: {
+                    text: "I'll help you check the balance for 0x5C951583CEb79828b1fAB7257FE497A9Dc5896e6",
+                    action: "GET_BALANCE",
+                    content: {
+                        address: "0x5C951583CEb79828b1fAB7257FE497A9Dc5896e6",
+                    },
+                },
+            }
+        ],
+        [
+            {
+                user: "{{user1}}",
+                content: {
+                    text: "Check balance",
+                },
+            },
+            {
+                user: "{{agent}}",
+                content: {
+                    text: "I need a wallet address to check the balance. Please provide a wallet address.",
+                    content: { error: "Missing wallet address" },
+                },
+            }
+        ]
     ] as ActionExample[][],
 } as Action;
