@@ -28,22 +28,20 @@ export const getBalance: Action = {
         "GET_BALANCE_OF_WALLET",
         "GET_BALANCE_OF_WALLET_ADDRESS",
     ],
-    validate: async (runtime: IAgentRuntime, message: Memory, callback?: HandlerCallback) => {
+    validate: async (runtime: IAgentRuntime, message: Memory) => {
         elizaLogger.info("Validating get balance action");
-        const sonicWallet = initializeSonicWallet(runtime);
-        if (!sonicWallet) {
-            elizaLogger.error("Failed to initialize Sonic wallet");
-            if (callback) {
-                callback({
-                    text: "Failed to initialize Sonic wallet",
-                    content: { error: "Failed to initialize Sonic wallet" },
-                });
+        try {
+            const sonicWallet = initializeSonicWallet(runtime);
+            if (!sonicWallet) {
+                elizaLogger.error("Failed to initialize Sonic wallet");
+                return false;
             }
+            return true;
+        } catch (error) {
+            elizaLogger.error("Error validating get balance action", error);
             return false;
         }
-        return true;
     },
-    suppressInitialMessage: true,
     handler: async (
         runtime: IAgentRuntime,
         message: Memory,
