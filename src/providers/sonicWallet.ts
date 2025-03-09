@@ -78,22 +78,44 @@ function resolveChainFromRPCUrl(rpcUrl: string): Chain {
     }
 }
 
-export function initializeSonicWallet(runtime: IAgentRuntime): SonicWalletManager {
-    const privateKey = runtime.getSetting("SONIC_WALLET_PRIVATE_KEY");
-    if (!privateKey) {
-        throw new Error("SONIC_WALLET_PRIVATE_KEY is not configured");
+export function initializeSonicWallet(runtime: IAgentRuntime): SonicWalletManager | null {
+    try {
+        const privateKey = runtime.getSetting("SONIC_WALLET_PRIVATE_KEY");
+        if (!privateKey) {
+            elizaLogger.error("Sonic Wallet initialization failed: SONIC_WALLET_PRIVATE_KEY is not configured");
+            return null;
+        }
+
+        const rpcUrl = runtime.getSetting("SONIC_RPC_URL") ?? CHAIN_RPC_URLS.MAINNET;
+        const chain = resolveChainFromRPCUrl(rpcUrl);
+
+        return new SonicWalletManager(privateKey, chain);
+    } catch (error) {
+        elizaLogger.error("Sonic Wallet initialization failed:", {
+            error: error instanceof Error ? error.message : 'Unknown error'
+        });
+        return null;
     }
-
-    const rpcUrl = runtime.getSetting("SONIC_RPC_URL") ?? CHAIN_RPC_URLS.MAINNET;
-    const chain = resolveChainFromRPCUrl(rpcUrl);
-
-    return new SonicWalletManager(privateKey, chain);
 }
 
 export const sonicWalletProvider: Provider = {
     async get(runtime: IAgentRuntime, _message: Memory, _state?: State): Promise<string> {
+        const wallet = initializeSonicWallet(runtime);
+        
+        if (!wallet) {
+            return [
+                `❌ Sonic Wallet Error:`,
+                `━━━━━━━━━━━━━━━━━━━━━`,
+                `Unable to initialize wallet.`,
+                `Please check your wallet configuration:`,
+                `- Ensure SONIC_WALLET_PRIVATE_KEY is configured`,
+                `- Verify the private key format is correct`,
+                `- Check RPC URL configuration`,
+                `━━━━━━━━━━━━━━━━━━━━━`
+            ].join('\n');
+        }
+
         try {
-            const wallet = initializeSonicWallet(runtime);
             const [address, balance] = await Promise.all([
                 wallet.getAddress(),
                 wallet.getBalance()

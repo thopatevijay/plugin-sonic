@@ -123,18 +123,38 @@ function resolveChainFromRPCUrl(rpcUrl) {
   }
 }
 function initializeSonicWallet(runtime) {
-  const privateKey = runtime.getSetting("SONIC_WALLET_PRIVATE_KEY");
-  if (!privateKey) {
-    throw new Error("SONIC_WALLET_PRIVATE_KEY is not configured");
+  try {
+    const privateKey = runtime.getSetting("SONIC_WALLET_PRIVATE_KEY");
+    if (!privateKey) {
+      elizaLogger.error("Sonic Wallet initialization failed: SONIC_WALLET_PRIVATE_KEY is not configured");
+      return null;
+    }
+    const rpcUrl = runtime.getSetting("SONIC_RPC_URL") ?? CHAIN_RPC_URLS.MAINNET;
+    const chain = resolveChainFromRPCUrl(rpcUrl);
+    return new SonicWalletManager(privateKey, chain);
+  } catch (error) {
+    elizaLogger.error("Sonic Wallet initialization failed:", {
+      error: error instanceof Error ? error.message : "Unknown error"
+    });
+    return null;
   }
-  const rpcUrl = runtime.getSetting("SONIC_RPC_URL") ?? CHAIN_RPC_URLS.MAINNET;
-  const chain = resolveChainFromRPCUrl(rpcUrl);
-  return new SonicWalletManager(privateKey, chain);
 }
 var sonicWalletProvider = {
   async get(runtime, _message, _state) {
+    const wallet = initializeSonicWallet(runtime);
+    if (!wallet) {
+      return [
+        `\u274C Sonic Wallet Error:`,
+        `\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501`,
+        `Unable to initialize wallet.`,
+        `Please check your wallet configuration:`,
+        `- Ensure SONIC_WALLET_PRIVATE_KEY is configured`,
+        `- Verify the private key format is correct`,
+        `- Check RPC URL configuration`,
+        `\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501`
+      ].join("\n");
+    }
     try {
-      const wallet = initializeSonicWallet(runtime);
       const [address, balance] = await Promise.all([
         wallet.getAddress(),
         wallet.getBalance()
@@ -249,6 +269,9 @@ var transferToken = {
       const currentState = state ?? await runtime.composeState(message);
       const updatedState = await runtime.updateRecentMessageState(currentState);
       const sonicWallet = initializeSonicWallet(runtime);
+      if (!sonicWallet) {
+        throw new Error("Sonic Wallet initialization failed");
+      }
       const action = new TransferAction(sonicWallet);
       const transferDetails = await buildTransferDetails(updatedState, runtime);
       const transferResp = await action.transfer(transferDetails);
@@ -330,22 +353,20 @@ var getBalance = {
     "GET_BALANCE_OF_WALLET",
     "GET_BALANCE_OF_WALLET_ADDRESS"
   ],
-  validate: async (runtime, message, callback) => {
+  validate: async (runtime, message) => {
     elizaLogger3.info("Validating get balance action");
-    const sonicWallet = initializeSonicWallet(runtime);
-    if (!sonicWallet) {
-      elizaLogger3.error("Failed to initialize Sonic wallet");
-      if (callback) {
-        callback({
-          text: "Failed to initialize Sonic wallet",
-          content: { error: "Failed to initialize Sonic wallet" }
-        });
+    try {
+      const sonicWallet = initializeSonicWallet(runtime);
+      if (!sonicWallet) {
+        elizaLogger3.error("Failed to initialize Sonic wallet");
+        return false;
       }
+      return true;
+    } catch (error) {
+      elizaLogger3.error("Error validating get balance action", error);
       return false;
     }
-    return true;
   },
-  suppressInitialMessage: true,
   handler: async (runtime, message, state, _options, callback) => {
     elizaLogger3.info("Getting balance");
     let currentState;

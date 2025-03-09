@@ -116,6 +116,9 @@ export const transferToken: Action = {
             const updatedState = await runtime.updateRecentMessageState(currentState);
 
             const sonicWallet = initializeSonicWallet(runtime);
+            if (!sonicWallet) {
+                throw new Error("Sonic Wallet initialization failed");
+            }
             const action = new TransferAction(sonicWallet);
             const transferDetails = await buildTransferDetails(updatedState, runtime);
 
