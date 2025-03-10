@@ -6,6 +6,17 @@ Core Sonic blockchain plugin for Eliza OS that provides essential services and a
 
 The Sonic plugin serves as a foundational component of Eliza OS, bridging Sonic blockchain capabilities with the Eliza ecosystem. It provides crucial services for token operations, trading, portfolio management, and DeFi integrations, enabling both automated and user-directed interactions with the Sonic blockchain.
 
+
+### 🎉 Milestone Achievement
+
+✅ **Our Sonic plugin has been accepted by ElizaOS!**  
+📌 **See PR here:** [elizaos-plugins/registry#97](https://github.com/elizaos-plugins/registry/pull/97)  
+📌 **Plugin Registry:** [elizaOS Plugin Registry](https://elizaos-plugins.github.io/registry/)  
+📷 **Sonic plugin listed in the ElizaOS Plugin Registry:**
+
+![Screenshot 1: Sonic plugin listed in the ElizaOS Plugin Registry](./images/Registry_Listed.png)
+
+
 ## Features
 
 ### Token Operations
