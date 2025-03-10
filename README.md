@@ -13,11 +13,12 @@ The Sonic plugin serves as a foundational component of Eliza OS, bridging Sonic 
 - **Token Transfers**: Send Sonic native token S.
 - **Balance**: Get token balances
 
-## Future Enhancements
-
 ### Wallet Provider
 
-- **Wallet Provider**: Implement wallet provider
+- **Wallet Provider**: SonicWalletManager.
+
+## Future Enhancements
+
 
 ### Trading Operations
 
@@ -40,9 +41,6 @@ The Sonic plugin serves as a foundational component of Eliza OS, bridging Sonic 
 - **Performance Tracking**: Historical performance monitoring
 - **Simulation Mode**: Test strategies without real transactions
 
-```bash
-npm install @elizaos-plugins/plugin-sonic
-```
 
 ## Configuration
 
@@ -56,6 +54,19 @@ const sonicEnvSchema = {
 ```
 
 ## Usage
+
+* Node.js 23+ (using nvm is recommended)
+```bash
+pnpm install @elizaos-plugins/plugin-sonic
+
+//or
+
+// add this line to dependencies
+ "@elizaos-plugins/plugin-sonic": "github:thopatevijay/plugin-sonic"
+
+ pnpm i && pnpm build && pnpm start
+
+```
 
 ### Basic Setup
 
@@ -134,3 +145,5 @@ For direct support, reach out on Discord: @thopate_vijay
 For more information about Sonic blockchain capabilities:
 
 - [Sonic Documentation](https://docs.soniclabs.com/)
+
+Built with ❤️ for the Sonic DeFAI Hackathon, March 2025.
